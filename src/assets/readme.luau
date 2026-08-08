@@ -16,7 +16,7 @@ Then proceed to "%localappdata%/Roblox/Versions/your-studio-version/content."
 
 and choose any folder or make one yourself and then put the "file.mesh" into it.
 
-Afterwards, proceed to Roblox Studio and paste this into MeshID (meshpart or specialMesh): "rbxasset://path/to/your/mesh.mesh."
+Afterwards, proceed to Roblox Studio and paste this into MeshID (meshpart or specialMesh): "rbxasset://path/to/your/mesh.mesh"
 
 ya done!
 ]]
