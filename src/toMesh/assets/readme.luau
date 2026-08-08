@@ -1,5 +1,5 @@
 return [[
-# version 0.0.1, mesh compile version: 1.00
+# mesh compile version: 2.00
 thank u for even usin' ts :33333
 
 Ahem... since it was built on Zune, I, uh. I don't know if I was able to get all the files inside a folder whatsoever. (Zune 0.5.8)
