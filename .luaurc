@@ -1,0 +1,8 @@
+{
+    "aliases": {
+        "raylib": "./libs/luau-raylib/src"
+    },
+    "lint": {
+        "LocalUnused": false
+    }
+}
