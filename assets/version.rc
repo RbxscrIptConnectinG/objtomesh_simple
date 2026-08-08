@@ -1,15 +1,15 @@
 VS_VERSION_INFO VERSIONINFO
-FILEVERSION 0,0,0,1
-PRODUCTVERSION 0,0,0,1
+FILEVERSION 0,0,0,2
+PRODUCTVERSION 0,0,0,2
 {
   BLOCK "StringFileInfo"
   {
     BLOCK "040904b0"
   {
-      VALUE "FileDescription", "hiiii!!!!\0"
-      VALUE "FileVersion", "0.0.0.1\0"
+      VALUE "FileDescription", "t10_kol was here\0"
+      VALUE "FileVersion", "0.0.0.2\0"
       VALUE "ProductName", "OBJ to mesh\0"
-      VALUE "ProductVersion", "0.0.0.1\0"
+      VALUE "ProductVersion", "0.0.0.2\0"
     }
   }
   BLOCK "VarFileInfo"
