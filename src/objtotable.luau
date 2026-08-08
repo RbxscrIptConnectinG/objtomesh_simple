@@ -13,8 +13,8 @@ return function(objString)
 				local x, y, z = data:match("([%d%-%+%.e]+)%s+([%d%-%+%.e]+)%s+([%d%-%+%.e]+)")
 				table.insert(vertices, { tonumber(x), tonumber(y), tonumber(z) })
 			elseif prefix == "vt" then
-				local u, v = data:match("([%d%-%+%.e]+)%s+([%d%-%+%.e]+)")
-				table.insert(texcoords, { tonumber(u), tonumber(v) })
+				local u, v, w = data:match("([%d%-%+%.e]+)%s+([%d%-%+%.e]+)%s+([%d%-%+%.e]+)")
+				table.insert(texcoords, { tonumber(u), tonumber(v), tonumber(w) })
 			elseif prefix == "vn" then
 				local nx, ny, nz = data:match("([%d%-%+%.e]+)%s+([%d%-%+%.e]+)%s+([%d%-%+%.e]+)")
 				table.insert(normals, { tonumber(nx), tonumber(ny), tonumber(nz) })

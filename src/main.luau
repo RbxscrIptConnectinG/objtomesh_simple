@@ -14,8 +14,8 @@ if not exist then
 	object = fs.readFileSync("./objtomesh/obj/file.obj")
 end
 
-local convert = require("./buffalowings")
+local convert = require("./converts/main")
 
-fs.writeFileSync("./objtomesh/mesh/file.mesh", convert(object))
+fs.writeFileSync("./objtomesh/mesh/file.mesh", convert.objToMesh(object))
 
 zune.process.exit(0)
