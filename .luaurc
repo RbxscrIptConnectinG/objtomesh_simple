@@ -1,6 +1,6 @@
 {
     "aliases": {
-        "raylib": "./libs/luau-raylib/src"
+        "applibs": "./libs"
     },
     "lint": {
         "LocalUnused": false

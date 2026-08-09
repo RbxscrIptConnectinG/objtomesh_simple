@@ -20,9 +20,13 @@ local arguments = process.args
 	return
 end
 ]]
+
+print("working on:", process.cwd())
+
+local converter = require("@applibs/converter")
+
 local appAssets = "../../assets/toMesh/"
 local appCore = "./objtomesh"
-
 local localEntries = fs.entries("./")
 local appFolderExists = false
 
@@ -43,15 +47,14 @@ if not appFolderExists then
 else
 	print("folder already exists")
 end
-local convert = require("./converter")
 
 local objs = fs.entries("./objtomesh/obj")
 for index, file in ipairs(objs) do
 	if file.kind == "file" and string.match(file.name, "obj$") then
 		local rawFileName = string.gsub(file.name, ".obj$", "")
 		local object = fs.readFileSync(`{appCore}/obj/{rawFileName}.obj`)
-		fs.writeFileSync(`{appCore}/mesh/{rawFileName}.mesh`, convert.objToMesh(object))
+		fs.writeFileSync(`{appCore}/mesh/{rawFileName}.mesh`, converter.objToMesh(object))
 	end
 end
 
-zune.process.exit(0)
+process.exit(0)
