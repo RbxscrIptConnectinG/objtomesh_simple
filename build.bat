@@ -1,6 +1,6 @@
 @echo off
 echo building objtomesh...
-zune bundle src/toMesh/main.luau src/toMesh/**/*.luau --out=build/debug/objtomesh.exe --debug
+zune bundle src/toMesh/main.luau src/toMesh/**/*.luau -f assets/toMesh/**  --out=build/debug/objtomesh.exe --debug
 
 
 

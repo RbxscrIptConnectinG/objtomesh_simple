@@ -26,7 +26,6 @@ export type MeshData = {
 local function parseV1(data: string, headerOffset: number, scaler: number): MeshData
 	local offset = headerOffset
 
-	-- Read number of faces
 	local numFacesStr, nextOffset = data:match("^(%d+)%s*()", offset)
 	if not numFacesStr then
 		error("Failed to parse face count in v1 mesh header")
@@ -55,7 +54,6 @@ local function parseV1(data: string, headerOffset: number, scaler: number): Mesh
 			local nx, ny, nz = tonumber(nxS), tonumber(nyS), tonumber(nzS)
 			local tu, tv, tw = tonumber(tuS), tonumber(tvS), tonumber(twS)
 
-			-- Normalize normal vector if finite
 			local len = math.sqrt(nx * nx + ny * ny + nz * nz)
 			if len > 0 then
 				nx, ny, nz = nx / len, ny / len, nz / len
@@ -89,9 +87,7 @@ end
 
 local function parseV2(data: string, headerOffset: number): MeshData
 	local buf = buffer.fromstring(data)
-	local offset = headerOffset - 1 -- buffer library is 0-indexed
-
-	-- FileMeshHeader (12 bytes)
+	local offset = headerOffset - 1
 	local cbSize = buffer.readu16(buf, offset)
 	local cbVerticesStride = buffer.readu8(buf, offset + 2)
 	local cbFaceStride = buffer.readu8(buf, offset + 3)
@@ -146,6 +142,114 @@ local function parseV2(data: string, headerOffset: number): MeshData
 	return { vertices = vertices, faces = faces }
 end
 
+local function parseV3(data: string, headerOffset: number): MeshData
+	local buf = buffer.fromstring(data)
+	local offset = headerOffset - 1
+
+	local cbSize = buffer.readu16(buf, offset)
+	local cbVerticesStride = buffer.readu8(buf, offset + 2)
+	local cbFaceStride = buffer.readu8(buf, offset + 3)
+
+	local numLODs = buffer.readu16(buf, offset + 4)
+	local numSubsets = buffer.readu16(buf, offset + 6)
+
+	local numFaces = buffer.readu32(buf, offset + 8)
+	local numVertices = buffer.readu32(buf, offset + 12)
+
+	offset += cbSize
+
+	if cbVerticesStride ~= 36 or cbFaceStride ~= 12 then
+		error("Incompatible version 3.00 mesh stride")
+	end
+
+	local vertices: { Vertex } = table.create(numVertices)
+	for i = 1, numVertices do
+		vertices[i] = {
+			vx = buffer.readf32(buf, offset),
+			vy = buffer.readf32(buf, offset + 4),
+			vz = buffer.readf32(buf, offset + 8),
+			nx = buffer.readf32(buf, offset + 12),
+			ny = buffer.readf32(buf, offset + 16),
+			nz = buffer.readf32(buf, offset + 20),
+			tu = buffer.readf32(buf, offset + 24),
+			tv = 1 - buffer.readf32(buf, offset + 28),
+			tw = buffer.readf32(buf, offset + 32),
+		}
+		offset += cbVerticesStride
+	end
+
+	local faces: { Face } = table.create(numFaces)
+	for i = 1, numFaces do
+		faces[i] = {
+			a = buffer.readu32(buf, offset) + 1,
+			b = buffer.readu32(buf, offset + 4) + 1,
+			c = buffer.readu32(buf, offset + 8) + 1,
+		}
+		offset += cbFaceStride
+	end
+
+	return { vertices = vertices, faces = faces }
+end
+
+local function parseV4(data: string, headerOffset: number): MeshData
+	local buf = buffer.fromstring(data)
+	local offset = headerOffset - 1
+
+	local cbSize = buffer.readu16(buf, offset)
+	local cbVerticesStride = buffer.readu8(buf, offset + 2)
+	local cbFaceStride = buffer.readu8(buf, offset + 3)
+
+	local numLODs = buffer.readu16(buf, offset + 4)
+	local numSubsets = buffer.readu16(buf, offset + 6)
+
+	local numFaces = buffer.readu32(buf, offset + 8)
+	local numVertices = buffer.readu32(buf, offset + 12)
+	local numBones = buffer.readu32(buf, offset + 16)
+
+	offset += cbSize
+
+	local vertices: { Vertex } = table.create(numVertices)
+	for i = 1, numVertices do
+		vertices[i] = {
+			vx = buffer.readf32(buf, offset),
+			vy = buffer.readf32(buf, offset + 4),
+			vz = buffer.readf32(buf, offset + 8),
+			nx = buffer.readf32(buf, offset + 12),
+			ny = buffer.readf32(buf, offset + 16),
+			nz = buffer.readf32(buf, offset + 20),
+			tu = buffer.readf32(buf, offset + 24),
+			tv = 1 - buffer.readf32(buf, offset + 28),
+			tw = buffer.readf32(buf, offset + 32),
+		}
+
+		offset += cbVerticesStride
+	end
+
+	if numBones > 0 then
+		offset += (numVertices * 8)
+	end
+
+	local faces: { Face } = table.create(numFaces)
+	for i = 1, numFaces do
+		faces[i] = {
+			a = buffer.readu32(buf, offset) + 1,
+			b = buffer.readu32(buf, offset + 4) + 1,
+			c = buffer.readu32(buf, offset + 8) + 1,
+		}
+		offset += cbFaceStride
+	end
+
+	return { vertices = vertices, faces = faces }
+end
+
+local function parseV5(data: string, headerOffset: number): MeshData
+	return parseV4(data, headerOffset)
+end
+
+local function parseV6(data: string, headerOffset: number): MeshData
+	return parseV5(data, headerOffset)
+end
+
 function MeshConverter.decodeMesh(data: string): MeshData
 	local lineEnd = data:find("\n")
 	if not lineEnd then
@@ -161,6 +265,14 @@ function MeshConverter.decodeMesh(data: string): MeshData
 		return parseV1(data, contentOffset, 1.0)
 	elseif header == "version 2.00" then
 		return parseV2(data, contentOffset)
+	elseif header == "version 3.00" or header == "version 3.01" then
+		return parseV3(data, contentOffset)
+	elseif header == "version 4.00" or header == "version 4.01" then
+		return parseV4(data, contentOffset)
+	elseif header == "version 5.00" then
+		return parseV5(data, contentOffset)
+	elseif header == "version 6.00" then
+		return parseV6(data, contentOffset)
 	else
 		error("Unsupported mesh version: " .. tostring(header))
 	end
@@ -317,6 +429,49 @@ end
 function MeshConverter.convertMeshToOBJ(data: string): string
 	local mesh = MeshConverter.decodeMesh(data)
 	return MeshConverter.meshToOBJ(mesh)
+end
+
+function MeshConverter.objToTable(objData)
+	local vertices = {}
+	local texcoords = {}
+	local normals = {}
+	local faces = {}
+
+	for line in objData:gmatch("[^\r\n]+") do
+		if not line:match("^#") and line:match("%S") then
+			local prefix, data = line:match("^([a-zA-Z]+)%s+(.*)")
+
+			if prefix == "v" then
+				local x, y, z = data:match("([%d%-%+%.e]+)%s+([%d%-%+%.e]+)%s+([%d%-%+%.e]+)")
+				table.insert(vertices, { tonumber(x), tonumber(y), tonumber(z) })
+			elseif prefix == "vt" then
+				local u, v, w = data:match("([%d%-%+%.e]+)%s+([%d%-%+%.e]+)%s+([%d%-%+%.e]+)")
+				table.insert(texcoords, { tonumber(u), tonumber(v), tonumber(w) })
+			elseif prefix == "vn" then
+				local nx, ny, nz = data:match("([%d%-%+%.e]+)%s+([%d%-%+%.e]+)%s+([%d%-%+%.e]+)")
+				table.insert(normals, { tonumber(nx), tonumber(ny), tonumber(nz) })
+			elseif prefix == "f" then
+				local faceIndices = {}
+				for vertexStr in data:gmatch("%S+") do
+					local parts = {}
+					for p in vertexStr:gmatch("[^/]*") do
+						if p ~= "" then
+							table.insert(parts, tonumber(p))
+						end
+					end
+					table.insert(faceIndices, parts)
+				end
+				table.insert(faces, faceIndices)
+			end
+		end
+	end
+
+	return {
+		vertices = vertices,
+		texcoords = texcoords,
+		normals = normals,
+		faces = faces,
+	}
 end
 
 return MeshConverter

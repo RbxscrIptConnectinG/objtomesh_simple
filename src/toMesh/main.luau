@@ -2,6 +2,25 @@ local io = zune.io
 local net = zune.net
 local serde = zune.serde
 local fs = zune.fs
+local process = zune.process
+
+local arguments = process.args
+
+-- that's for another update.
+--[[if #arguments > 0 then
+	local out, outIndex = "./", nil
+	for index, argument: string in ipairs(arguments) do
+		if string.match(argument, "^--out=") then
+			out, outIndex = string.gsub(argument, "^--out=", ""), index
+		end
+	end
+	print("OUTPOINT:", out)
+	print(arguments)
+	zune.process.exit(0)
+	return
+end
+]]
+local appAssets = "../../assets/toMesh/"
 
 local localEntries = fs.entries("./")
 local appFolderExists = false
@@ -12,18 +31,18 @@ for index, folder in pairs(localEntries) do
 		break
 	end
 end
-
 if not appFolderExists then
 	print("no folder yet, making one right up!")
 	fs.makeDir("./objtomesh", true)
 	fs.makeDir("./objtomesh/obj", true)
 	fs.makeDir("./objtomesh/mesh", true)
-	fs.writeFileSync("./objtomesh/obj/file.obj", require("./assets/file"))
-	fs.writeFileSync("./objtomesh/readme.txt", require("./assets/readme"))
+
+	fs.writeFileSync("./objtomesh/obj/file.obj", fs.embedFile(appAssets .. "baseCude.obj"))
+	fs.writeFileSync("./objtomesh/readme.txt", fs.embedFile(appAssets .. "readme.txt"))
 else
 	print("folder already exists")
 end
-local convert = require("./converts/main")
+local convert = require("./converter")
 
 local objs = fs.entries("./objtomesh/obj")
 for index, file in ipairs(objs) do
