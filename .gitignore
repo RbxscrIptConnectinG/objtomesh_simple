@@ -1,3 +1,10 @@
 *.exe
 build
 .vscode
+
+# this [########] doesn't worth it YET...
+v7.luau
+draco/
+FFI_DRACO/
+bufferWorks.luau
+draco.dll

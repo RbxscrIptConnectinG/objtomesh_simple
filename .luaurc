@@ -1,8 +1,10 @@
 {
     "aliases": {
-        "applibs": "./libs"
+        "applibs": "./applibs",
+        "libs": "./libs"
     },
     "lint": {
-        "LocalUnused": false
+        "LocalUnused": false,
+        "ImportUnused": false
     }
 }

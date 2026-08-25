@@ -6,6 +6,39 @@ local process = zune.process
 
 local arguments = process.args
 
+-- ignore those tests.
+
+--[[
+local testing = true
+
+if testing then
+	--[[local meshmanip = require("@applibs/mesh")
+	fs.makeDir("./TESTING_OUTPUT", true)
+	local testingMaterials = fs.entries("./assets/testingMaterial")
+	for index, file in ipairs(testingMaterials) do
+		if file.kind == "file" and string.match(file.name, "mesh$") then
+			local rawFileName = string.gsub(file.name, ".mesh$$", "")
+			local filePath = "./assets/testingMaterial" .. "/" .. file.name
+			local contents = fs.readFileSync(filePath)
+			local meshData = meshmanip.decodeMesh(contents)
+
+			fs.writeFileSync("./TESTING_OUTPUT/" .. rawFileName .. ".json", serde.json5.encode(meshData))
+			fs.writeFileSync("./TESTING_OUTPUT/" .. rawFileName .. ".obj", meshmanip.meshToOBJ(meshData))
+		end
+	end]]
+--[[
+	local Draco = require("@applibs/FFI_DRACO")
+
+	--local compressed = Draco.encodeMesh(vertices, indices, 14)
+	--print(`Compressed size: {buffer.len(compressed)} bytes (raw was {#vertices * 4 + #indices * 4} bytes)`)
+	local compressed = buffer.fromstring(fs.readFileSync("./assets/draco.mesh"))
+	local outVerts, outIndices = Draco.decodeMesh(compressed)
+	print(`Decoded {#outVerts // 3} vertices, {#outIndices} indices`)
+
+	return
+end
+]]
+
 -- that's for another update.
 --[[if #arguments > 0 then
 	local out, outIndex = "./", nil
@@ -23,7 +56,7 @@ end
 
 print("working on:", process.cwd())
 
-local converter = require("@applibs/converter")
+local meshmanip = require("@applibs/mesh")
 
 local appAssets = "../../assets/toMesh/"
 local appCore = "./objtomesh"
@@ -53,7 +86,7 @@ for index, file in ipairs(objs) do
 	if file.kind == "file" and string.match(file.name, "obj$") then
 		local rawFileName = string.gsub(file.name, ".obj$", "")
 		local object = fs.readFileSync(`{appCore}/obj/{rawFileName}.obj`)
-		fs.writeFileSync(`{appCore}/mesh/{rawFileName}.mesh`, converter.objToMesh(object))
+		fs.writeFileSync(`{appCore}/mesh/{rawFileName}.mesh`, meshmanip.objToMesh(object))
 	end
 end
 
