@@ -1,4 +1,4 @@
-It turns your OBJ file into a Roblox mesh (2.00) file.
+It turns your OBJ file into a Roblox mesh (2.00 / 7.00) file.
 
 And it's written in Luau.
 
