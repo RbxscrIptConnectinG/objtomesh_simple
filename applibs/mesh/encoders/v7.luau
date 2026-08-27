@@ -3,7 +3,7 @@ local meshTypes = require("@applibs/meshTypes")
 local parseObj = require("@applibs/mesh/parsers/obj")
 
 return function(objData)
-	local mesh = parseObj(objData)
+	local mesh = parseObj(objData, true)
 
 	local dracoBytes = Draco.encodeMeshFull(mesh.vertices, mesh.faces, nil)
 	local dracoSize = buffer.len(dracoBytes)

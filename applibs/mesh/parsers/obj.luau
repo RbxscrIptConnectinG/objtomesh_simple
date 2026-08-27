@@ -1,5 +1,5 @@
 local meshTypes = require("@applibs/meshTypes")
-return function(objData: string): meshTypes.MeshData
+return function(objData: string, noInvertUV: boolean?): meshTypes.MeshData
 	local positions: { { number } } = {}
 	local uvs: { { number } } = {}
 	local normals: { { number } } = {}
@@ -26,7 +26,7 @@ return function(objData: string): meshTypes.MeshData
 			ny = norm[2],
 			nz = norm[3],
 			tu = uv[1],
-			tv = 1 - uv[2],
+			tv = noInvertUV and uv[2] or 1 - uv[2],
 			tw = 0,
 		}
 
