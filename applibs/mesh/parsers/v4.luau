@@ -1,6 +1,6 @@
-local meshtypes = require("@applibs/meshtypes")
+local meshTypes = require("@applibs/meshTypes")
 -- i'll have to fix it some day...
-return function(data: string, headerOffset: number): meshtypes.MeshData
+return function(data: string, headerOffset: number): meshTypes.MeshData
 	local buf = buffer.fromstring(data)
 	local offset = headerOffset - 1
 
@@ -17,7 +17,7 @@ return function(data: string, headerOffset: number): meshtypes.MeshData
 
 	offset += cbSize
 
-	local vertices: { meshtypes.Vertex } = table.create(numVertices)
+	local vertices: { meshTypes.Vertex } = table.create(numVertices)
 	for i = 1, numVertices do
 		local vx = buffer.readf32(buf, offset)
 		local vy = buffer.readf32(buf, offset + 4)
@@ -48,7 +48,7 @@ return function(data: string, headerOffset: number): meshtypes.MeshData
 		offset += (numVertices * 8)
 	end
 
-	local faces: { meshtypes.Face } = table.create(numFaces)
+	local faces: { meshTypes.Face } = table.create(numFaces)
 	for i = 1, numFaces do
 		faces[i] = {
 			a = buffer.readu32(buf, offset) + 1,

@@ -1,5 +1,6 @@
-local meshtypes = require("@applibs/meshtypes")
-return function(data: string, headerOffset: number): meshtypes.MeshData
+local meshTypes = require("@applibs/meshTypes")
+-- probably broken too
+return function(data: string, headerOffset: number): meshTypes.MeshData
 	local buf = buffer.fromstring(data)
 	local offset = headerOffset - 1
 
@@ -19,7 +20,7 @@ return function(data: string, headerOffset: number): meshtypes.MeshData
 		error("Incompatible version 3.00 mesh stride")
 	end
 
-	local vertices: { meshtypes.Vertex } = table.create(numVertices)
+	local vertices: { meshTypes.Vertex } = table.create(numVertices)
 	for i = 1, numVertices do
 		vertices[i] = {
 			vx = buffer.readf32(buf, offset),
@@ -35,7 +36,7 @@ return function(data: string, headerOffset: number): meshtypes.MeshData
 		offset += cbVerticesStride
 	end
 
-	local faces: { meshtypes.Face } = table.create(numFaces)
+	local faces: { meshTypes.Face } = table.create(numFaces)
 	for i = 1, numFaces do
 		faces[i] = {
 			a = buffer.readu32(buf, offset) + 1,

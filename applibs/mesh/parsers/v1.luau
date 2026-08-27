@@ -1,5 +1,5 @@
-local meshtypes = require("@applibs/meshtypes")
-return function(data: string, headerOffset: number, scaler: number): meshtypes.MeshData
+local meshTypes = require("@applibs/meshTypes")
+return function(data: string, headerOffset: number, scaler: number): meshTypes.MeshData
 	local offset = headerOffset
 
 	local numFacesStr, nextOffset = data:match("^(%d+)%s*()", offset)
@@ -10,8 +10,8 @@ return function(data: string, headerOffset: number, scaler: number): meshtypes.M
 	local numFaces = tonumber(numFacesStr) :: number
 	offset = nextOffset
 
-	local vertices: { meshtypes.Vertex } = {}
-	local faces: { meshtypes.Face } = {}
+	local vertices: { meshTypes.Vertex } = {}
+	local faces: { meshTypes.Face } = {}
 
 	local tokenPattern = "%s*%[%s*([%d%.%-%+eE]+)%s*,%s*([%d%.%-%+eE]+)%s*,%s*([%d%.%-%+eE]+)%s*%]"
 	local vtxPattern = tokenPattern .. tokenPattern .. tokenPattern

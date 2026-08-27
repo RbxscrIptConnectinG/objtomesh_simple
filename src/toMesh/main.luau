@@ -6,39 +6,6 @@ local process = zune.process
 
 local arguments = process.args
 
--- ignore those tests.
-
---[[
-local testing = true
-
-if testing then
-	--[[local meshmanip = require("@applibs/mesh")
-	fs.makeDir("./TESTING_OUTPUT", true)
-	local testingMaterials = fs.entries("./assets/testingMaterial")
-	for index, file in ipairs(testingMaterials) do
-		if file.kind == "file" and string.match(file.name, "mesh$") then
-			local rawFileName = string.gsub(file.name, ".mesh$$", "")
-			local filePath = "./assets/testingMaterial" .. "/" .. file.name
-			local contents = fs.readFileSync(filePath)
-			local meshData = meshmanip.decodeMesh(contents)
-
-			fs.writeFileSync("./TESTING_OUTPUT/" .. rawFileName .. ".json", serde.json5.encode(meshData))
-			fs.writeFileSync("./TESTING_OUTPUT/" .. rawFileName .. ".obj", meshmanip.meshToOBJ(meshData))
-		end
-	end]]
---[[
-	local Draco = require("@applibs/FFI_DRACO")
-
-	--local compressed = Draco.encodeMesh(vertices, indices, 14)
-	--print(`Compressed size: {buffer.len(compressed)} bytes (raw was {#vertices * 4 + #indices * 4} bytes)`)
-	local compressed = buffer.fromstring(fs.readFileSync("./assets/draco.mesh"))
-	local outVerts, outIndices = Draco.decodeMesh(compressed)
-	print(`Decoded {#outVerts // 3} vertices, {#outIndices} indices`)
-
-	return
-end
-]]
-
 -- that's for another update.
 --[[if #arguments > 0 then
 	local out, outIndex = "./", nil
@@ -56,10 +23,15 @@ end
 
 print("working on:", process.cwd())
 
-local meshmanip = require("@applibs/mesh")
+local meshUtils = require("@applibs/mesh")
+local APP_TYPES = require("./types")
 
-local appAssets = "../../assets/toMesh/"
-local appCore = "./objtomesh"
+local APP_ASSETS = "../../assets/toMesh"
+local APP_FFI_FILES = "../../libs"
+
+local APP_CORE = "./objtomesh"
+local APP_LIBS = `{APP_CORE}/libs`
+
 local localEntries = fs.entries("./")
 local appFolderExists = false
 
@@ -71,22 +43,45 @@ for index, folder in pairs(localEntries) do
 end
 if not appFolderExists then
 	print("no folder yet, making one right up!")
-	fs.makeDir(appCore, true)
-	fs.makeDir(appCore .. "/obj", true)
-	fs.makeDir(appCore .. "/mesh", true)
+	fs.makeDir(APP_CORE, true)
+	fs.makeDir(APP_CORE .. "/obj", true)
+	fs.makeDir(APP_CORE .. "/mesh", true)
 
-	fs.writeFileSync(appCore .. "/obj/file.obj", fs.embedFile(appAssets .. "baseCude.obj"))
-	fs.writeFileSync(appCore .. "/readme.txt", fs.embedFile(appAssets .. "readme.txt"))
+	print()
+	fs.writeFileSync(`{APP_CORE}/obj/file.obj`, fs.embedFile(`{APP_ASSETS}/baseCude.obj`))
+	fs.writeFileSync(`{APP_CORE}/readme.txt`, fs.embedFile(`{APP_ASSETS}/readme.txt`))
 else
 	print("folder already exists")
 end
+
+fs.makeDir(APP_LIBS, true)
+fs.writeFileSync(`{APP_LIBS}/draco.dll`, fs.embedFile(`{APP_FFI_FILES}/dlls/draco.dll`))
+
+do
+	local settingsExist = false
+	local entries = fs.entries(APP_CORE)
+	for index, file in pairs(entries) do
+		if file.name == "settings.json" and file.kind == "file" then
+			settingsExist = true
+			break
+		end
+	end
+	if not settingsExist then
+		fs.writeFileSync(`{APP_CORE}/settings.json`, fs.embedFile(`{APP_ASSETS}/settings.json`))
+	end
+end
+
+local settings: APP_TYPES.Settings = serde.json5.decode(fs.readFileSync(`{APP_CORE}/settings.json`))
 
 local objs = fs.entries("./objtomesh/obj")
 for index, file in ipairs(objs) do
 	if file.kind == "file" and string.match(file.name, "obj$") then
 		local rawFileName = string.gsub(file.name, ".obj$", "")
-		local object = fs.readFileSync(`{appCore}/obj/{rawFileName}.obj`)
-		fs.writeFileSync(`{appCore}/mesh/{rawFileName}.mesh`, meshmanip.objToMesh(object))
+		local object = fs.readFileSync(`{APP_CORE}/obj/{rawFileName}.obj`)
+		fs.writeFileSync(
+			`{APP_CORE}/mesh/{rawFileName}.mesh`,
+			meshUtils.objToMesh(settings.encoderVer or "2.00", object)
+		)
 	end
 end
 
