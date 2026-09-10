@@ -1,5 +1,6 @@
 local meshTypes = require("@applibs/meshTypes")
 return function(data: string, headerOffset: number, scaler: number): meshTypes.MeshData
+	scaler = scaler or 0.5
 	local offset = headerOffset
 
 	local numFacesStr, nextOffset = data:match("^(%d+)%s*()", offset)
@@ -38,9 +39,9 @@ return function(data: string, headerOffset: number, scaler: number): meshTypes.M
 			end
 
 			table.insert(vertices, {
-				vx = vx,
-				vy = vy,
-				vz = vz,
+				vx = vx * 0.5,
+				vy = vy * 0.5,
+				vz = vz * 0.5,
 				nx = nx,
 				ny = ny,
 				nz = nz,

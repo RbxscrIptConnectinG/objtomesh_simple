@@ -4,6 +4,7 @@ local DracoTypes = require("@applibs/draco/types")
 local mesh = {}
 mesh.parsers = {
 	v1 = require("@self/parsers/v1"),
+	["v1.01"] = require("@self/parsers/v1.01"),
 	v2 = require("@self/parsers/v2"),
 	v3 = require("@self/parsers/v3"),
 	v4 = require("@self/parsers/v4"),
@@ -12,6 +13,8 @@ mesh.parsers = {
 	v7 = require("@self/parsers/v7"),
 }
 mesh.encoders = {
+	["1.00"] = require("@self/encoders/v1"),
+	["1.01"] = require("@self/encoders/v1.01"),
 	["2.00"] = require("@self/encoders/v2"),
 	["7.00"] = require("@self/encoders/v7"),
 }
@@ -29,7 +32,15 @@ function mesh.decodeMesh(data: string): meshTypes.MeshData
 	local header = data:sub(1, lineEnd - 1):match("^%s*(.-)%s*$")
 	local contentOffset = lineEnd + 1
 
-	if header == "version 1.00" then
+	local simplified = string.gsub(header, "version ", "v")
+
+	if mesh.parsers[simplified] then
+		return mesh.parsers[simplified](data, contentOffset)
+	else
+		error(`Unsupported mesh version: "{tostring(header)}"`)
+	end
+
+	--[[	if header == "version 1.00" then
 		return mesh.parsers.v1(data, contentOffset, 0.5)
 	elseif header == "version 1.01" then
 		return mesh.parsers.v1(data, contentOffset, 1.0)
@@ -47,7 +58,7 @@ function mesh.decodeMesh(data: string): meshTypes.MeshData
 		return mesh.parsers.v7(data, contentOffset)
 	else
 		error(`Unsupported mesh version: "{tostring(header)}"`)
-	end
+	end]]
 end
 
 function mesh.meshToOBJ(mesh: meshTypes.MeshData): string
@@ -77,8 +88,8 @@ function mesh.objToMesh(version: string, objData: string, ...: DracoTypes.Encode
 end
 
 function mesh.convertMeshToOBJ(data: string): string
-	local mesh = mesh.decodeMesh(data)
-	return mesh.meshToOBJ(mesh)
+	local decodedmesh = mesh.decodeMesh(data)
+	return mesh.meshToOBJ(decodedmesh)
 end
 
 return mesh
