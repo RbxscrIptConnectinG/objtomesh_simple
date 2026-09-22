@@ -3,25 +3,37 @@ local DracoTypes = require("@applibs/draco/types")
 
 local mesh = {}
 mesh.parsers = {
-	v1 = require("@self/parsers/v1"),
+	["v1.00"] = require("@self/parsers/v1.00"),
 	["v1.01"] = require("@self/parsers/v1.01"),
-	v2 = require("@self/parsers/v2"),
-	v3 = require("@self/parsers/v3"),
-	v4 = require("@self/parsers/v4"),
+	["v2.00"] = require("@self/parsers/v2.00"),
+
+	["v3.00"] = require("@self/parsers/v3.00"),
+	["v3.01"] = require("@self/parsers/v3.01"),
+
+	["v4.00"] = require("@self/parsers/v4.00"),
+	["v4.01"] = require("@self/parsers/v4.01"),
+
 	--v5 = require("@self/parsers/v5"),
 	--v6 = require("@self/parsers/v6"),
-	v7 = require("@self/parsers/v7"),
+	["v7.00"] = require("@self/parsers/v7.00"),
 }
 mesh.encoders = {
-	["1.00"] = require("@self/encoders/v1"),
+	["1.00"] = require("@self/encoders/v1.00"),
 	["1.01"] = require("@self/encoders/v1.01"),
-	["2.00"] = require("@self/encoders/v2"),
-	["7.00"] = require("@self/encoders/v7"),
+	["2.00"] = require("@self/encoders/v2.00"),
+
+	["3.00"] = require("@self/encoders/v3.00"),
+	["3.01"] = require("@self/encoders/v3.01"),
+
+	["4.00"] = require("@self/encoders/v4.00"),
+	["4.01"] = require("@self/encoders/v4.01"),
+
+	["7.00"] = require("@self/encoders/v7.00"),
 }
 
 -- this is stupid. i  know...
-mesh.parsers.v5 = mesh.parsers.v4
-mesh.parsers.v6 = mesh.parsers.v5
+mesh.parsers["v5.00"] = mesh.parsers["v4.00"]
+mesh.parsers["v6.00"] = mesh.parsers["v5.00"]
 
 function mesh.decodeMesh(data: string): meshTypes.MeshData
 	local lineEnd = data:find("\n")
@@ -33,7 +45,7 @@ function mesh.decodeMesh(data: string): meshTypes.MeshData
 	local contentOffset = lineEnd + 1
 
 	local simplified = string.gsub(header, "version ", "v")
-
+	print(header, simplified)
 	if mesh.parsers[simplified] then
 		return mesh.parsers[simplified](data, contentOffset)
 	else

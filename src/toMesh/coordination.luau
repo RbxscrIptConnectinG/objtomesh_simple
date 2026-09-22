@@ -1,5 +1,10 @@
 local c = {
+	VSCODE = {
+		ASSETS = "./assets/toMesh",
+		BINS = "./libs/bin",
+	},
 	EMBEDDED = {
+		ROOT = "../..",
 		ASSETS = "../../assets/toMesh",
 		BINS = "../../libs/bin",
 	},

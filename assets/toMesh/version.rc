@@ -1,15 +1,13 @@
 VS_VERSION_INFO VERSIONINFO
-FILEVERSION 0,0,0,4
-PRODUCTVERSION 0,0,0,4
 {
   BLOCK "StringFileInfo"
   {
     BLOCK "040904b0"
   {
       VALUE "FileDescription", "let's take a look... 👀\0"
-      VALUE "FileVersion", "0.0.0.4\0"
+      VALUE "FileVersion", "1.0.0.0\0"
       VALUE "ProductName", "OBJ to mesh\0"
-      VALUE "ProductVersion", "0.0.0.4\0"
+      VALUE "ProductVersion", "1.0.0.0\0"
       VALUE "CompanyName", "T10-Studio\0"
     }
   }

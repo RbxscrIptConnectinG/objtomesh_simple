@@ -1,16 +1,14 @@
-# mesh compile version: 2.00 / 7.00
-thank u for even usin' ts :33333
+oi!
+Just chuck all yer objs into the "obj" folder
 
-Just put all your objs into "obj" folder
+Then you just run "objtomesh.exe," and the output shall be a "[FileName].mesh" in the "mesh" folder.
 
-And then you just execute "objtomesh.exe," and the output should be a "[FileName].mesh" inside the "mesh" folder.
+If you wanna use thy mesh in the studio
 
-If you want to use that mesh in the studio
+Then head to "%localappdata%/Roblox/Versions/your-studio-version/content"
 
-Then proceed to "%localappdata%/Roblox/Versions/your-studio-version/content"
+and pick any folder or make one yourself, then pop the mesh files in 'ere.
 
-and choose any folder or make one yourself and then put the mesh file into it.
+After that, head to Roblox Studio and paste this into MeshID (meshpart or specialMesh): "rbxasset://path/to/your/mesh.mesh"
 
-Afterwards, proceed to Roblox Studio and paste this into MeshID (meshpart or specialMesh): "rbxasset://path/to/your/mesh.mesh"
-
-ya done!
+Ya done!

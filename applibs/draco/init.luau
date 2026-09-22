@@ -1,7 +1,10 @@
 --!strict
 
+local environment = require("@applibs/environment")
+
 local ffi = zune.ffi
 local t = ffi.types
+local fs = zune.fs
 
 local function fn(returns: any, args: { any })
 	return { returns = returns, args = args }
@@ -78,7 +81,7 @@ type DracoAPI = {
 }
 
 local Draco = {}
-local libPath = "./objtomesh/libs/draco.dll"
+local libPath = environment.IsVSC and "./libs/bin/draco.dll" or "./bin/draco.dll"
 local lib: DracoAPI? = nil
 
 function Draco.setLibraryPath(path: string)

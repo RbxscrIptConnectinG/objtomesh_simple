@@ -10,24 +10,26 @@ local tick = time.timestampMillis
 
 local arguments = process.args
 
-local __environment = {
-	IsVSC = #fs.embeddedFiles() <= 0,
-}
+local sift = require("@libs/luau/sift")
 
--- that's for another update.
---[[if #arguments > 0 then
-	local out, outIndex = "./", nil
-	for index, argument: string in ipairs(arguments) do
-		if string.match(argument, "^--out=") then
-			out, outIndex = string.gsub(argument, "^--out=", ""), index
+local environment = require("@applibs/environment")
+
+if #arguments > 0 then
+	local globals = {
+		outputPath = "./",
+	}
+	arguments = sift.List.map(arguments, function(value: string, index: number)
+		if value:match("^--output=") then
+			globals.outputPath = value:gsub("^--output=", "")
+			return value, index
 		end
+		return
+	end)
+	if #arguments > 0 then
+		zune.process.exit(0)
+		return
 	end
-	print("OUTPOINT:", out)
-	print(arguments)
-	zune.process.exit(0)
-	return
 end
-]]
 
 print("working on:", process.cwd())
 
@@ -71,6 +73,8 @@ print("working on:", process.cwd())
 	return
 end]]
 
+-- oh for fucks sake. it was hell to translate sift package to work w/ zune.
+
 local meshUtils = require("@applibs/mesh")
 
 local APP_TYPES = require("./types")
@@ -105,23 +109,28 @@ end
 
 fs.makeDir(APP_COORDINATION.SYSTEM.BINS, true)
 do
-	-- doin unpacking em' bins
-
-	if __environment.IsVSC then
-		local entries = fs.entries(APP_COORDINATION.EMBEDDED.BINS)
-
+	-- brain FUCKery.
+	if environment.IsVSC then
+		local entries = fs.entries(APP_COORDINATION.VSCODE.BINS)
 		for index, file in pairs(entries) do
-			if file.kind == "file" and string.match(file.name, ".dll$") then
-				local data = fs.readFileSync(`{APP_COORDINATION.EMBEDDED.BINS}/{file.name}`)
+			if file.kind == "file" then
+				local data = fs.readFileSync(`{APP_COORDINATION.VSCODE.BINS}/{file.name}`)
 				fs.writeFileSync(`{APP_COORDINATION.SYSTEM.BINS}/{file.name}`, data)
-
-				break
 			end
 		end
 	else
-		local draco_data = fs.embedFile(`{APP_COORDINATION.EMBEDDED.BINS}/draco.dll`)
-
-		fs.writeFileSync(`{APP_COORDINATION.SYSTEM.BINS}/draco.dll`, draco_data)
+		local entries = sift.Dictionary.map(fs.embeddedFiles(), function(value: string, key: number)
+			if string.match(value, "^libs\\bin\\") then
+				value = value:gsub("\\", "/")
+				return value, key
+			end
+			return nil, nil
+		end)
+		for index, filePath in pairs(entries) do
+			local fileName = filePath:match("([^/]+)$")
+			local data = fs.embedFile(`{APP_COORDINATION.EMBEDDED.ROOT}/{filePath}`)
+			fs.writeFileSync(`{APP_COORDINATION.SYSTEM.BINS}/{fileName}`, data)
+		end
 	end
 end
 
