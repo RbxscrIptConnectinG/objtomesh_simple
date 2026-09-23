@@ -14,23 +14,6 @@ local sift = require("@libs/luau/sift")
 
 local environment = require("@applibs/environment")
 
-if #arguments > 0 then
-	local globals = {
-		outputPath = "./",
-	}
-	arguments = sift.List.map(arguments, function(value: string, index: number)
-		if value:match("^--output=") then
-			globals.outputPath = value:gsub("^--output=", "")
-			return value, index
-		end
-		return
-	end)
-	if #arguments > 0 then
-		zune.process.exit(0)
-		return
-	end
-end
-
 print("working on:", process.cwd())
 
 --[[if true then
@@ -105,6 +88,23 @@ if not appFolderExists then
 	)
 else
 	print("folder already exists")
+
+	if #arguments > 0 then
+		local globals = {
+			outputPath = "./",
+		}
+		arguments = sift.List.map(arguments, function(value: string, index: number)
+			if value:match("^--output=") then
+				globals.outputPath = value:gsub("^--output=", "")
+				return value, index
+			end
+			return
+		end)
+		if #arguments > 0 then
+			process.exit(0)
+			return
+		end
+	end
 end
 
 fs.makeDir(APP_COORDINATION.SYSTEM.BINS, true)
@@ -153,16 +153,42 @@ end
 
 local settings: APP_TYPES.Settings = serde.json5.decode(fs.readFileSync(`{APP_COORDINATION.SYSTEM.CORE}/settings.json`))
 
-local objs = fs.entries(APP_COORDINATION.SYSTEM.INPUT)
-for index, file in ipairs(objs) do
-	if file.kind == "file" and string.match(file.name, ".obj$") then
-		local rawFileName = string.gsub(file.name, ".obj$", "")
-		local object = fs.readFileSync(`{APP_COORDINATION.SYSTEM.INPUT}/{rawFileName}.obj`)
+local function transform(path, file, output, customSettings: APP_TYPES.Settings?)
+	customSettings = customSettings and serde.json5.decode(fs.readFileSync(customSettings))
+
+	print(file, file.kind == "file", fs.path.extension(file.name) == ".obj")
+	if file.kind == "file" and fs.path.extension(file.name) == ".obj" then
+		local rawFileName = fs.path.stem(file.name)
+		local rawPath = fs.path.resolve(path, file.name)
+		local object = fs.readFileSync(rawPath)
+		local outputPath = fs.path.join(output, rawFileName)
 		fs.writeFileSync(
-			`{APP_COORDINATION.SYSTEM.OUTPUT}/{rawFileName}.mesh`,
-			meshUtils.objToMesh(settings.encoderVer or "2.00", object)
+			`{outputPath}.mesh`,
+			meshUtils.objToMesh((customSettings or settings).encoderVer or "2.00", object)
 		)
+		print(`transformed obj into mesh, [output: {fs.realPath(`{outputPath}.mesh`)}]`)
+	elseif file.kind == "file" and fs.path.extension(file.name) ~= ".obj" then
+		print("oi!... wait, what the fuck?, who are you?,", `{fs.path.resolve(path, file.name)}?`)
 	end
 end
+local function processPath(path, output)
+	local pathStats = fs.stat(path)
+
+	if pathStats.kind == "directory" then
+		local objs = fs.entries(path)
+		for index, file in ipairs(objs) do
+			transform(path, file, output)
+		end
+	elseif pathStats.kind == "file" then
+		local absolutePath = fs.realPath(path)
+		local file = {
+			name = fs.path.basename(absolutePath),
+			kind = pathStats.kind,
+		}
+		transform(fs.path.dirname(absolutePath), file, output)
+	end
+end
+
+processPath(`{APP_COORDINATION.SYSTEM.INPUT}`, `{APP_COORDINATION.SYSTEM.OUTPUT}`)
 
 process.exit(0)
