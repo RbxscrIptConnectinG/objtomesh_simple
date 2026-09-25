@@ -19,7 +19,7 @@ local environment = require("@applibs/environment")
 print("cwd:", process.cwd())
 
 --[[if true then
-	-- fuzzy
+	-- i'm tired.
 	local raylib = require("@libs/luau/raylib")
 	raylib.lib.InitWindow(450, 450, "TestWindow")
 	raylib.lib.SetTargetFPS(60)
@@ -75,7 +75,7 @@ end
 
 local settings: APP_TYPES.Settings = fs.stat(`{APP_COORDINATION.SYSTEM.CORE}/settings.json`).kind == "file"
 		and serde.json5.decode(fs.readFileSync(`{APP_COORDINATION.SYSTEM.CORE}/settings.json`))
-	or fs.embedFile(`{APP_COORDINATION.EMBEDDED.ASSETS}/settings.json`)
+	or fs.embedFile(`{APP_COORDINATION.EMBEDDED.ASSETS}/json/settings.json`)
 local function transform(path, file, output, customSettings: APP_TYPES.Settings?)
 	customSettings = customSettings and serde.json5.decode(fs.readFileSync(customSettings))
 
@@ -129,11 +129,11 @@ if not appFolderExists then
 
 	fs.writeFileSync(
 		`{APP_COORDINATION.SYSTEM.CORE}/obj/file.obj`,
-		fs.embedFile(`{APP_COORDINATION.EMBEDDED.ASSETS}/baseCude.obj`)
+		fs.embedFile(`{APP_COORDINATION.EMBEDDED.ASSETS}/models/baseCude.obj`)
 	)
 	fs.writeFileSync(
 		`{APP_COORDINATION.SYSTEM.CORE}/readme.txt`,
-		fs.embedFile(`{APP_COORDINATION.EMBEDDED.ASSETS}/readme.txt`)
+		fs.embedFile(`{APP_COORDINATION.EMBEDDED.ASSETS}/documents/readme.txt`)
 	)
 else
 	print("folder already exists")
@@ -205,7 +205,7 @@ do
 	if not settingsExist then
 		fs.writeFileSync(
 			`{APP_COORDINATION.SYSTEM.CORE}/settings.json`,
-			fs.embedFile(`{APP_COORDINATION.EMBEDDED.ASSETS}/settings.json`)
+			fs.embedFile(`{APP_COORDINATION.EMBEDDED.ASSETS}/json/settings.json`)
 		)
 	end
 end

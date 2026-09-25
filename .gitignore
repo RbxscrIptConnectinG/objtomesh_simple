@@ -1,6 +1,3 @@
 *.exe
 build
 .vscode
-
-# this [########] doesn't worth it YET...
-MAX_IMP_v7.luau
