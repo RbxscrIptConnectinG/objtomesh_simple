@@ -1,4 +1,4 @@
-local meshTypes = require("@applibs/meshTypes")
+local meshTypes = require("@applibs/mesh/types")
 local utils = {}
 utils.VERTEX_SIZE = 40
 function utils.readVertex(data: buffer, offset: number): meshTypes.Vertex

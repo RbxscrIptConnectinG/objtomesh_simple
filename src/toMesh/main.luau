@@ -76,31 +76,35 @@ end
 local settings: APP_TYPES.Settings = fs.stat(`{APP_COORDINATION.SYSTEM.CORE}/settings.json`).kind == "file"
 		and serde.json5.decode(fs.readFileSync(`{APP_COORDINATION.SYSTEM.CORE}/settings.json`))
 	or fs.embedFile(`{APP_COORDINATION.EMBEDDED.ASSETS}/json/settings.json`)
-local function transform(path, file, output, customSettings: APP_TYPES.Settings?)
+local function transform(path, file, output, customSettings: APP_TYPES.Settings?, isParse: boolean?)
 	customSettings = customSettings and serde.json5.decode(fs.readFileSync(customSettings))
 
 	--print(file.kind == "file", fs.path.extension(file.name) == ".obj")
-	if file.kind == "file" and fs.path.extension(file.name) == ".obj" then
-		local rawFileName = fs.path.stem(file.name)
-		local rawPath = fs.path.resolve(path, file.name)
-		local object = fs.readFileSync(rawPath)
-		local outputPath = fs.path.join(output, rawFileName)
-		fs.writeFileSync(
-			`{outputPath}.mesh`,
-			meshUtils.objToMesh((customSettings or settings).encoderVer or "2.00", object)
-		)
-		print(`transformed obj into mesh, [output: {fs.realPath(`{outputPath}.mesh`)}]`)
-	elseif file.kind == "file" and fs.path.extension(file.name) ~= ".obj" then
-		print("oi!... wait, what the fuck?, who are you?,", `{fs.path.resolve(path, file.name)}?`)
+	if not isParse then
+		if file.kind == "file" and fs.path.extension(file.name) == ".obj" then
+			local rawFileName = fs.path.stem(file.name)
+			local rawPath = fs.path.resolve(path, file.name)
+			local object = fs.readFileSync(rawPath)
+			local outputPath = fs.path.join(output, rawFileName)
+			fs.writeFileSync(
+				`{outputPath}.mesh`,
+				meshUtils.objToMesh((customSettings or settings).encoderVer or "2.00", object)
+			)
+			print(`transformed obj into mesh, [output: {fs.realPath(`{outputPath}.mesh`)}]`)
+		elseif file.kind == "file" and fs.path.extension(file.name) ~= ".obj" then
+			print("oi!... wait, what the fuck?, who are you?,", `{fs.path.resolve(path, file.name)}?`)
+		end
+	else
+		print("not implemented yet")
 	end
 end
-local function processPath(input, output)
+local function processPath(input, output, customSettings, isParse)
 	local function processIt(path)
 		local pathStats = fs.stat(path)
 		if pathStats.kind == "directory" then
 			local objs = fs.entries(path)
 			for index, file in ipairs(objs) do
-				transform(path, file, output)
+				transform(path, file, output, customSettings, isParse)
 			end
 		elseif pathStats.kind == "file" then
 			local absolutePath = fs.realPath(path)
@@ -108,7 +112,7 @@ local function processPath(input, output)
 				name = fs.path.basename(absolutePath),
 				kind = pathStats.kind,
 			}
-			transform(fs.path.dirname(absolutePath), file, output)
+			transform(fs.path.dirname(absolutePath), file, output, customSettings, isParse)
 		end
 	end
 

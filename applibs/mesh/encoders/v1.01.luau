@@ -1,4 +1,4 @@
-local meshTypes = require("@applibs/meshTypes")
+local meshTypes = require("@applibs/mesh/types")
 local meshUtils = require("@applibs/mesh/utils")
 local parseObj = require("@applibs/mesh/parsers/obj")
 

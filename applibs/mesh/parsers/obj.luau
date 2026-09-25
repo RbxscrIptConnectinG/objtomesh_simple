@@ -1,4 +1,4 @@
-local meshTypes = require("@applibs/meshTypes")
+local meshTypes = require("@applibs/mesh/types")
 return function(objData: string, noInvertUV: boolean?): meshTypes.MeshData
 	local positions: { { number } } = {}
 	local uvs: { { number } } = {}

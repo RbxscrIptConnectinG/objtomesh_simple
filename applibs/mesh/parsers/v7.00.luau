@@ -1,4 +1,4 @@
-local meshTypes = require("@applibs/meshTypes")
+local meshTypes = require("@applibs/mesh/types")
 local Draco = require("@applibs/draco")
 
 -- i'll look further into parsers later, since it isn't my main focus for today

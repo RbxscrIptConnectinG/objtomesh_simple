@@ -1,4 +1,4 @@
-local meshTypes = require("@applibs/meshTypes")
+local meshTypes = require("@applibs/mesh/types")
 local DracoTypes = require("@applibs/draco/types")
 
 local mesh = {}

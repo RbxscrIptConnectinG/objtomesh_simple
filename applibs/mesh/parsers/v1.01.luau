@@ -1,4 +1,4 @@
-local meshTypes = require("@applibs/meshTypes")
+local meshTypes = require("@applibs/mesh/types")
 
 return function(data: string, headerOffset: number): meshTypes.MeshData
 	local nl = data:find("\n", headerOffset + 1, true)

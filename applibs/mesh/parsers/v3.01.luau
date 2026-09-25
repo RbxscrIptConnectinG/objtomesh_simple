@@ -1,4 +1,4 @@
-local meshTypes = require("@applibs/meshTypes")
+local meshTypes = require("@applibs/mesh/types")
 local meshUtils = require("@applibs/mesh/utils")
 
 return function(data: string, headerOffset: number): meshTypes.MeshData

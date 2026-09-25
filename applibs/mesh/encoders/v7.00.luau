@@ -1,5 +1,5 @@
 local Draco = require("@applibs/draco")
-local meshTypes = require("@applibs/meshTypes")
+local meshTypes = require("@applibs/mesh/types")
 local parseObj = require("@applibs/mesh/parsers/obj")
 
 return function(objData)
