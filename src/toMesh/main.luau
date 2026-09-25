@@ -10,11 +10,13 @@ local tick = time.timestampMillis
 
 local arguments = process.args
 
+-- oh for fucks sake. it was hell to translate sift package to work w/ zune.
+
 local sift = require("@libs/luau/sift")
 
 local environment = require("@applibs/environment")
 
-print("working on:", process.cwd())
+print("cwd:", process.cwd())
 
 --[[if true then
 	-- fuzzy
@@ -56,8 +58,6 @@ print("working on:", process.cwd())
 	return
 end]]
 
--- oh for fucks sake. it was hell to translate sift package to work w/ zune.
-
 local meshUtils = require("@applibs/mesh")
 
 local APP_TYPES = require("./types")
@@ -79,7 +79,7 @@ local settings: APP_TYPES.Settings = fs.stat(`{APP_COORDINATION.SYSTEM.CORE}/set
 local function transform(path, file, output, customSettings: APP_TYPES.Settings?)
 	customSettings = customSettings and serde.json5.decode(fs.readFileSync(customSettings))
 
-	print(file, file.kind == "file", fs.path.extension(file.name) == ".obj")
+	--print(file.kind == "file", fs.path.extension(file.name) == ".obj")
 	if file.kind == "file" and fs.path.extension(file.name) == ".obj" then
 		local rawFileName = fs.path.stem(file.name)
 		local rawPath = fs.path.resolve(path, file.name)
@@ -97,7 +97,6 @@ end
 local function processPath(input, output)
 	local function processIt(path)
 		local pathStats = fs.stat(path)
-
 		if pathStats.kind == "directory" then
 			local objs = fs.entries(path)
 			for index, file in ipairs(objs) do
@@ -114,10 +113,9 @@ local function processPath(input, output)
 	end
 
 	if typeof(input) == "table" then
-		for i = 1, #input do
-			local path = input[i]
-			processIt(path)
-		end
+		sift.List.map(input, function(p, index: number)
+			processIt(p)
+		end)
 	else
 		processIt(input)
 	end
@@ -149,8 +147,8 @@ else
 			if value:match("^--output=") then
 				globals.outputPath = value:gsub("^--output=", "")
 				return value, index
-			elseif value:match("^-i=") then
-				table.insert(globals.inputs, select(1, value:gsub("^-i=", "")) :: any)
+			elseif value:match("^-f=") then
+				table.insert(globals.inputs, select(1, value:gsub("^-f=", "")) :: any)
 				return value, index
 			end
 			return
@@ -171,7 +169,7 @@ end
 fs.makeDir(APP_COORDINATION.SYSTEM.BINS, true)
 do
 	-- brain FUCKery.
-	if environment.IsCompiled then
+	if environment.IsNotCompiled then
 		local entries = fs.entries(APP_COORDINATION.VSCODE.BINS)
 		for index, file in pairs(entries) do
 			if file.kind == "file" then
