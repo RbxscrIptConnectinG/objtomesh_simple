@@ -1,3 +1,5 @@
+local fs = zune.fs
+local environment = require("@applibs/environment")
 local c = {
 	VSCODE = {
 		ASSETS = "./assets/toMesh",
@@ -10,8 +12,8 @@ local c = {
 	},
 
 	SYSTEM = {
-		CORE = "./objtomesh",
-		BINS = `bin`,
+		CORE = fs.path.join(environment.RootPath, "objtomesh"),
+		BINS = fs.path.join(environment.RootPath, `bin`),
 	},
 }
 

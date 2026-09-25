@@ -1,4 +1,4 @@
-local fs = zune.fs
 return {
-	IsVSC = #fs.embeddedFiles() <= 0,
+	IsCompiled = zune.compiled,
+	RootPath = zune.fs.path.dirname(zune.fs.getExePath()),
 }

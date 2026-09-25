@@ -63,7 +63,7 @@ local meshUtils = require("@applibs/mesh")
 local APP_TYPES = require("./types")
 local APP_COORDINATION = require("./coordination")
 
-local localEntries = fs.entries("./")
+local localEntries = fs.entries(environment.RootPath)
 local appFolderExists = false
 
 for index, folder in pairs(localEntries) do
@@ -72,6 +72,57 @@ for index, folder in pairs(localEntries) do
 		break
 	end
 end
+
+local settings: APP_TYPES.Settings = fs.stat(`{APP_COORDINATION.SYSTEM.CORE}/settings.json`).kind == "file"
+		and serde.json5.decode(fs.readFileSync(`{APP_COORDINATION.SYSTEM.CORE}/settings.json`))
+	or fs.embedFile(`{APP_COORDINATION.EMBEDDED.ASSETS}/settings.json`)
+local function transform(path, file, output, customSettings: APP_TYPES.Settings?)
+	customSettings = customSettings and serde.json5.decode(fs.readFileSync(customSettings))
+
+	print(file, file.kind == "file", fs.path.extension(file.name) == ".obj")
+	if file.kind == "file" and fs.path.extension(file.name) == ".obj" then
+		local rawFileName = fs.path.stem(file.name)
+		local rawPath = fs.path.resolve(path, file.name)
+		local object = fs.readFileSync(rawPath)
+		local outputPath = fs.path.join(output, rawFileName)
+		fs.writeFileSync(
+			`{outputPath}.mesh`,
+			meshUtils.objToMesh((customSettings or settings).encoderVer or "2.00", object)
+		)
+		print(`transformed obj into mesh, [output: {fs.realPath(`{outputPath}.mesh`)}]`)
+	elseif file.kind == "file" and fs.path.extension(file.name) ~= ".obj" then
+		print("oi!... wait, what the fuck?, who are you?,", `{fs.path.resolve(path, file.name)}?`)
+	end
+end
+local function processPath(input, output)
+	local function processIt(path)
+		local pathStats = fs.stat(path)
+
+		if pathStats.kind == "directory" then
+			local objs = fs.entries(path)
+			for index, file in ipairs(objs) do
+				transform(path, file, output)
+			end
+		elseif pathStats.kind == "file" then
+			local absolutePath = fs.realPath(path)
+			local file = {
+				name = fs.path.basename(absolutePath),
+				kind = pathStats.kind,
+			}
+			transform(fs.path.dirname(absolutePath), file, output)
+		end
+	end
+
+	if typeof(input) == "table" then
+		for i = 1, #input do
+			local path = input[i]
+			processIt(path)
+		end
+	else
+		processIt(input)
+	end
+end
+
 if not appFolderExists then
 	print("no folder yet, making one right up!")
 	fs.makeDir(APP_COORDINATION.SYSTEM.CORE, true)
@@ -91,16 +142,26 @@ else
 
 	if #arguments > 0 then
 		local globals = {
-			outputPath = "./",
+			outputPath = nil,
+			inputs = {},
 		}
 		arguments = sift.List.map(arguments, function(value: string, index: number)
 			if value:match("^--output=") then
 				globals.outputPath = value:gsub("^--output=", "")
 				return value, index
+			elseif value:match("^-i=") then
+				table.insert(globals.inputs, select(1, value:gsub("^-i=", "")) :: any)
+				return value, index
 			end
 			return
 		end)
 		if #arguments > 0 then
+			if not sift.isEmpty(globals.inputs) and globals.outputPath then
+				print("we got them input and output paths, doing some magic...")
+
+				processPath(globals.inputs, globals.outputPath)
+			end
+
 			process.exit(0)
 			return
 		end
@@ -110,7 +171,7 @@ end
 fs.makeDir(APP_COORDINATION.SYSTEM.BINS, true)
 do
 	-- brain FUCKery.
-	if environment.IsVSC then
+	if environment.IsCompiled then
 		local entries = fs.entries(APP_COORDINATION.VSCODE.BINS)
 		for index, file in pairs(entries) do
 			if file.kind == "file" then
@@ -151,43 +212,7 @@ do
 	end
 end
 
-local settings: APP_TYPES.Settings = serde.json5.decode(fs.readFileSync(`{APP_COORDINATION.SYSTEM.CORE}/settings.json`))
-
-local function transform(path, file, output, customSettings: APP_TYPES.Settings?)
-	customSettings = customSettings and serde.json5.decode(fs.readFileSync(customSettings))
-
-	print(file, file.kind == "file", fs.path.extension(file.name) == ".obj")
-	if file.kind == "file" and fs.path.extension(file.name) == ".obj" then
-		local rawFileName = fs.path.stem(file.name)
-		local rawPath = fs.path.resolve(path, file.name)
-		local object = fs.readFileSync(rawPath)
-		local outputPath = fs.path.join(output, rawFileName)
-		fs.writeFileSync(
-			`{outputPath}.mesh`,
-			meshUtils.objToMesh((customSettings or settings).encoderVer or "2.00", object)
-		)
-		print(`transformed obj into mesh, [output: {fs.realPath(`{outputPath}.mesh`)}]`)
-	elseif file.kind == "file" and fs.path.extension(file.name) ~= ".obj" then
-		print("oi!... wait, what the fuck?, who are you?,", `{fs.path.resolve(path, file.name)}?`)
-	end
-end
-local function processPath(path, output)
-	local pathStats = fs.stat(path)
-
-	if pathStats.kind == "directory" then
-		local objs = fs.entries(path)
-		for index, file in ipairs(objs) do
-			transform(path, file, output)
-		end
-	elseif pathStats.kind == "file" then
-		local absolutePath = fs.realPath(path)
-		local file = {
-			name = fs.path.basename(absolutePath),
-			kind = pathStats.kind,
-		}
-		transform(fs.path.dirname(absolutePath), file, output)
-	end
-end
+settings = serde.json5.decode(fs.readFileSync(`{APP_COORDINATION.SYSTEM.CORE}/settings.json`))
 
 processPath(`{APP_COORDINATION.SYSTEM.INPUT}`, `{APP_COORDINATION.SYSTEM.OUTPUT}`)
 
