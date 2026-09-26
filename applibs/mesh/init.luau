@@ -13,7 +13,7 @@ mesh.parsers = {
 	["v4.00"] = require("@self/parsers/v4.00"),
 	["v4.01"] = require("@self/parsers/v4.01"),
 
-	--v5 = require("@self/parsers/v5"),
+	["v5.00"] = require("@self/parsers/v5.00"),
 	--v6 = require("@self/parsers/v6"),
 	["v7.00"] = require("@self/parsers/v7.00"),
 }
@@ -27,13 +27,10 @@ mesh.encoders = {
 
 	["4.00"] = require("@self/encoders/v4.00"),
 	["4.01"] = require("@self/encoders/v4.01"),
+	["5.00"] = require("@self/encoders/v5.00"),
 
 	["7.00"] = require("@self/encoders/v7.00"),
 }
-
--- this is stupid. i  know...
-mesh.parsers["v5.00"] = mesh.parsers["v4.00"]
-mesh.parsers["v6.00"] = mesh.parsers["v5.00"]
 
 function mesh.decodeMesh(data: string): meshTypes.MeshData
 	local lineEnd = data:find("\n")

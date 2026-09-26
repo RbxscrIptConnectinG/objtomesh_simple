@@ -1,8 +1,7 @@
 local meshTypes = require("@applibs/mesh/types")
 local Draco = require("@applibs/draco")
 
--- i'll look further into parsers later, since it isn't my main focus for today
-return function(data: string, headerOffset: number)
+return function(data: string, headerOffset: number): meshTypes.MeshData
 	headerOffset -= 1
 	local dataBuffer = buffer.fromstring(data)
 	local size = buffer.len(dataBuffer)

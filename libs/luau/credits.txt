@@ -1,4 +1,3 @@
 sift = "https://github.com/cxmeel/sift"
-huffman = "https://github.com/HappySunChild/huffman-luau"
 raylib = "https://github.com/Scythe-Technology/luau-raylib"
 cryptography = "https://github.com/daily3014/rbx-cryptography"

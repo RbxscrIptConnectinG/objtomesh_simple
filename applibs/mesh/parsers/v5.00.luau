@@ -15,7 +15,7 @@ return function(data: string, headerOffset: number): meshTypes.MeshData
 	local numBones = buffer.readu16(buf, off + 14)
 	local sizeofBoneNames = buffer.readu32(buf, off + 16)
 	local numSubsets = buffer.readu16(buf, off + 20)
-
+	local facsDataSize = buffer.readu32(buf, off + 28)
 	off += headerSize
 
 	local vertices: { meshTypes.Vertex } = table.create(numVerts)
@@ -42,6 +42,7 @@ return function(data: string, headerOffset: number): meshTypes.MeshData
 	off += numBones * 60
 	off += sizeofBoneNames
 	off += numSubsets * 72
+	off += facsDataSize
 
 	return { vertices = vertices, faces = faces }
 end
