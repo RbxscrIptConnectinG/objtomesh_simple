@@ -19,6 +19,9 @@ export type Face = {
 export type MeshData = {
 	vertices: { Vertex },
 	faces: { Face },
+	lodOffsets: {}?,
 }
+
+export type RawCorner = { p: number, t: number?, n: number? }
 
 return {}

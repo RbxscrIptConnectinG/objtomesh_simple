@@ -1,6 +1,16 @@
 -- fallback
+local sift = require("@libs/luau/sift")
 local V3 = require("./v3.01")
 
-return function(objData)
-	return V3(objData, "3.00")
+export type options = {}
+
+return function(objData, options: options)
+	options = options or {} :: options
+
+	return V3(
+		objData,
+		sift.Dictionary.join(options, {
+			__forceVer = "3.00",
+		})
+	)
 end

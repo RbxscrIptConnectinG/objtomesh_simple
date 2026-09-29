@@ -4,7 +4,11 @@ local parseObj = require("@applibs/mesh/parsers/obj")
 
 local POSITION_SCALE = 2.0
 
-return function(objData)
+export type options = {}
+
+return function(objData, options: options)
+	options = options or {} :: options
+
 	local mesh = parseObj(objData)
 	local parts: { string } = { "version 1.00\n", tostring(#mesh.faces), "\n" }
 

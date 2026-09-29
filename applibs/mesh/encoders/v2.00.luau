@@ -2,7 +2,11 @@ local meshTypes = require("@applibs/mesh/types")
 local meshUtils = require("@applibs/mesh/utils")
 local parseObj = require("@applibs/mesh/parsers/obj")
 
-return function(objData)
+export type options = {}
+
+return function(objData, options: options)
+	options = options or {} :: options
+
 	local mesh = parseObj(objData)
 
 	local numVerts = #mesh.vertices
