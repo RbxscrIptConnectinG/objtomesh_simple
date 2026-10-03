@@ -2,12 +2,14 @@ local meshTypes = require("@applibs/mesh/types")
 local meshUtils = require("@applibs/mesh/utils")
 local parseObj = require("@applibs/mesh/parsers/obj")
 
-export type options = {}
+export type options = {
+	autoLODLevels: number?,
+}
 
 return function(objData, options: options)
 	options = options or {} :: options
 
-	local mesh = parseObj(objData, true)
+	local mesh = parseObj(objData, true, options.autoLODLevels)
 
 	local numVerts = #mesh.vertices
 	local numFaces = #mesh.faces

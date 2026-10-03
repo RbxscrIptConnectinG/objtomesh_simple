@@ -2,7 +2,9 @@
 local sift = require("@libs/luau/sift")
 local V4 = require("./v4.01")
 
-export type options = {}
+export type options = {
+	autoLODLevels: number?,
+}
 
 return function(objData, options: options)
 	options = options or {} :: options

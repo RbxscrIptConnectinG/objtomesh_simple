@@ -1,7 +1,7 @@
 local meshTypes = require("@applibs/mesh/types")
 local meshUtils = require("@applibs/mesh/utils")
 
-return function(objData: string, noInvertUV: boolean?): meshTypes.MeshData
+return function(objData: string, noInvertUV: boolean?, autoLods: number?): meshTypes.MeshData
 	local positions: { { number } } = {}
 	local normals: { { number } } = {}
 	local uvs: { { number } } = {}
@@ -97,6 +97,34 @@ return function(objData: string, noInvertUV: boolean?): meshTypes.MeshData
 		end
 		table.insert(lodOffsets, #faces)
 		return { vertices = vertices, faces = faces, lodOffsets = lodOffsets }
+	elseif autoLods ~= nil and math.floor(autoLods) > 0 then
+		local levels = math.floor(autoLods)
+		local baseFaceCount = #faces
+		local allVerts = vertices
+		local allFaces = faces
+		local lodOffsets: { number } = { 0, #allFaces }
+
+		print(`generating lods... [LEVELS: {levels}]`)
+
+		for level = 1, levels do
+			print(`[LV{level}] generating...`)
+			local calc_div = 0.95 ^ level
+
+			local targetCount = math.max(4, math.floor(baseFaceCount * calc_div))
+			local lodVerts, lodFaces = meshUtils.autoLOD(vertices, faces, targetCount)
+
+			local base = #allVerts
+			for _, v in lodVerts do
+				table.insert(allVerts, v)
+			end
+			for _, f in lodFaces do
+				table.insert(allFaces, { a = f.a + base, b = f.b + base, c = f.c + base })
+			end
+			table.insert(lodOffsets, #allFaces)
+			print(`[LV{level}] generated!`)
+		end
+
+		return { vertices = allVerts, faces = allFaces, lodOffsets = lodOffsets }
 	end
 
 	return { vertices = vertices, faces = faces }

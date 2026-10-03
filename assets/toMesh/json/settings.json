@@ -1,4 +1,7 @@
 {
-    "encoderVer": "7.00"
+    "encoderVer": "7.00",
     // 1.00, 2.00, 3.01, 4.01, 5.00, 7.00
+    "options": {
+        "autoLODLevels": 9 // remove or set to 0
+    }
 }

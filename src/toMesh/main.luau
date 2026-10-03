@@ -78,7 +78,7 @@ local settings: APP_TYPES.Settings = fs.stat(`{APP_COORDINATION.SYSTEM.CORE}/set
 	or fs.embedFile(`{APP_COORDINATION.EMBEDDED.ASSETS}/json/settings.json`)
 local function transform(path, file, output, customSettings: APP_TYPES.Settings?, isParse: boolean?)
 	customSettings = customSettings and serde.json5.decode(fs.readFileSync(customSettings))
-
+	local local_settings = (customSettings or settings)
 	--print(file.kind == "file", fs.path.extension(file.name) == ".obj")
 	if not isParse then
 		if file.kind == "file" and fs.path.extension(file.name) == ".obj" then
@@ -88,7 +88,7 @@ local function transform(path, file, output, customSettings: APP_TYPES.Settings?
 			local outputPath = fs.path.join(output, rawFileName)
 			fs.writeFileSync(
 				`{outputPath}.mesh`,
-				meshUtils.objToMesh((customSettings or settings).encoderVer or "2.00", object)
+				meshUtils.objToMesh(local_settings.encoderVer or "2.00", object, local_settings.options)
 			)
 			print(`transformed obj into mesh, [output: {fs.realPath(`{outputPath}.mesh`)}]`)
 		elseif file.kind == "file" and fs.path.extension(file.name) ~= ".obj" then
@@ -133,7 +133,7 @@ if not appFolderExists then
 
 	fs.writeFileSync(
 		`{APP_COORDINATION.SYSTEM.CORE}/obj/file.obj`,
-		fs.embedFile(`{APP_COORDINATION.EMBEDDED.ASSETS}/models/baseCude.obj`)
+		fs.embedFile(`{APP_COORDINATION.EMBEDDED.ASSETS}/models/baseCube.obj`)
 	)
 	fs.writeFileSync(
 		`{APP_COORDINATION.SYSTEM.CORE}/readme.txt`,

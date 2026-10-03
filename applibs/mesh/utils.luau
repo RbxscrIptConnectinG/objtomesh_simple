@@ -88,4 +88,6 @@ function utils.parseIndex(token: string, count: number): number?
 	return n
 end
 
+utils.autoLOD = require("./autoLOD")
+
 return utils

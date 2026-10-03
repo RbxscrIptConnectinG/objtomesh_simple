@@ -2,12 +2,15 @@ local meshTypes = require("@applibs/mesh/types")
 local meshUtils = require("@applibs/mesh/utils")
 local parseObj = require("@applibs/mesh/parsers/obj")
 
-export type options = { __forceVer: string? }
+export type options = {
+	__forceVer: string?,
+	autoLODLevels: number?,
+}
 
 return function(objData, options: options): string
 	options = options or {} :: options
 
-	local mesh = parseObj(objData, true)
+	local mesh = parseObj(objData, true, options.autoLODLevels)
 
 	local version = options.__forceVer or "4.01"
 

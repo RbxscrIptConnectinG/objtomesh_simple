@@ -81,7 +81,8 @@ type DracoAPI = {
 }
 
 local Draco = {}
-local libPath = environment.IsNotCompiled and "./libs/bin/draco.dll" or "./bin/draco.dll"
+local libPath = environment.IsNotCompiled and "./libs/bin/draco.dll"
+	or fs.path.join(environment.RootPath, "bin/draco.dll")
 local lib: DracoAPI? = nil
 
 function Draco.setLibraryPath(path: string)

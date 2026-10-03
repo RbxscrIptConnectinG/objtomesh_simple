@@ -14,7 +14,7 @@ return function(objData, options: options)
 	local headerText = "version 2.00\n"
 	local headerSize = 12
 
-	local totalSize = #headerText + headerSize + numVerts * meshUtils.VERTEX_SIZE + numFaces * 12
+	local totalSize = #headerText + headerSize + numVerts * meshUtils.VERTEX_SIZE + numFaces * meshUtils.FACE_SIZE
 	local out = buffer.create(totalSize)
 	local pos = 0
 

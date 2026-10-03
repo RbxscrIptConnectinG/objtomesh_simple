@@ -89,7 +89,7 @@ function mesh.meshToOBJ(mesh: meshTypes.MeshData): string
 	return table.concat(lines, "\n")
 end
 
-function mesh.objToMesh(version: string, objData: string, ...: DracoTypes.EncodeOptions? | any): string
+function mesh.objToMesh(version: string, objData: string, ...: DracoTypes.EncodeOptions? | any?): string
 	if not mesh.encoders[version] then
 		error(`Version "{version}" encoder isn't implemented yet!`)
 	end
