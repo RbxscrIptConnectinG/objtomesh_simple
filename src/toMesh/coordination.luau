@@ -16,6 +16,9 @@ local c = {
 		BINS = fs.path.join(environment.RootPath, `bin`),
 	},
 }
+c.VSCODE.SHADERS = `{c.VSCODE.ASSETS}/bin/shaders`
+
+c.EMBEDDED.SHADERS = `{c.EMBEDDED.ASSETS}/bin/shaders`
 
 c.SYSTEM.INPUT = `{c.SYSTEM.CORE}/obj`
 c.SYSTEM.OUTPUT = `{c.SYSTEM.CORE}/mesh`

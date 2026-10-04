@@ -1,5 +1,5 @@
 --[[
-	png.luau - small PNG decoder (non-interlaced; 8/16-bit grey, grey+alpha, RGB, RGBA; 8-bit palette)
+	small PNG decoder (non-interlaced; 8/16-bit grey, grey+alpha, RGB, RGBA; 8-bit palette)
 
 	local width, height, rgba = png.decode(fileContents)  -- rgba: buffer, width*height*4 bytes
 
@@ -84,9 +84,7 @@ function png.decode(data: string | buffer): (number, number, buffer)
 		at += part[2]
 	end
 	local zlib = zune.serde and zune.serde.zlib
-	if not zlib then
-		error("png: zune.serde.zlib is unavailable; decode the image yourself and call renderer:createTexture(w, h, rgba)")
-	end
+
 	local raw: buffer = zlib.decompress(compressed)
 
 	local bps = depth // 8 -- bytes per sample
@@ -116,7 +114,7 @@ function png.decode(data: string | buffer): (number, number, buffer)
 			elseif filter == 3 then
 				v = cur + (a + up) // 2
 			elseif filter == 4 then
-				local c = if (x >= bpp and y > 0) then buffer.readu8(pix, row + x - rowBytes - bpp) else 0
+				local c = if x >= bpp and y > 0 then buffer.readu8(pix, row + x - rowBytes - bpp) else 0
 				local p = a + up - c
 				local pa, pb, pc = math.abs(p - a), math.abs(p - up), math.abs(p - c)
 				local pr = if pa <= pb and pa <= pc then a elseif pb <= pc then up else c
@@ -137,7 +135,11 @@ function png.decode(data: string | buffer): (number, number, buffer)
 			local o = (y * width + x) * 4
 			local r, g, bl, al
 			if ctype == 6 then
-				r, g, bl, al = buffer.readu8(pix, p), buffer.readu8(pix, p + bps), buffer.readu8(pix, p + 2 * bps), buffer.readu8(pix, p + 3 * bps)
+				r, g, bl, al =
+					buffer.readu8(pix, p),
+					buffer.readu8(pix, p + bps),
+					buffer.readu8(pix, p + 2 * bps),
+					buffer.readu8(pix, p + 3 * bps)
 			elseif ctype == 2 then
 				r, g, bl, al = buffer.readu8(pix, p), buffer.readu8(pix, p + bps), buffer.readu8(pix, p + 2 * bps), 255
 			elseif ctype == 0 then
@@ -148,7 +150,10 @@ function png.decode(data: string | buffer): (number, number, buffer)
 				g, bl, al = r, r, buffer.readu8(pix, p + bps)
 			else -- palette
 				local idx = buffer.readu8(pix, p)
-				r, g, bl = buffer.readu8(palette :: buffer, idx * 3), buffer.readu8(palette :: buffer, idx * 3 + 1), buffer.readu8(palette :: buffer, idx * 3 + 2)
+				r, g, bl =
+					buffer.readu8(palette :: buffer, idx * 3),
+					buffer.readu8(palette :: buffer, idx * 3 + 1),
+					buffer.readu8(palette :: buffer, idx * 3 + 2)
 				al = if trns and idx < buffer.len(trns :: buffer) then buffer.readu8(trns :: buffer, idx) else 255
 			end
 			buffer.writeu8(out, o, r)

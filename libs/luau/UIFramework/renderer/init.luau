@@ -19,8 +19,8 @@
 ]]
 
 local ffi = zune.ffi
-local vk = require("./vk")
-local spirvModules = require("./spirv")
+local vk = require("@self/vk")
+local shaderLoader = require("@self/shader")
 local C = vk.C
 
 local FRAMES = 2
@@ -34,7 +34,7 @@ export type Options = {
 	appName: string?,
 	clearColor: { number }?, -- {r, g, b, a}
 	maxVertices: number?, -- per-frame UI vertex capacity (default 65536 = ~10k quads)
-	shaders: { [string]: any }?, -- override: uiVert/uiFrag/modelVert/modelFrag = {u32 words} | SPIR-V buffer
+	shaders: any?, -- "folder" (default: "shaders" beside renderer.luau) | { uiVert/uiFrag/modelVert/modelFrag/modelFragDither = "file.vert|.frag|.spv" | SPIR-V buffer } | { libraryPath = shaderc library path, shaders = either of the former }
 }
 
 local Renderer = {}
@@ -830,10 +830,41 @@ function Renderer:_createPipeline(
 	return pipeline
 end
 
-function Renderer:_createPipelines(overrides: { [string]: any }?)
-	local sh = overrides or {}
+local SHADER_FILES = {
+	uiVert = "vert/ui.vert",
+	uiFrag = "frag/ui.frag",
+	modelVert = "vert/model.vert",
+	modelFrag = "frag/model.frag",
+	modelFragDither = "frag/model_dither.frag",
+}
+
+-- Folder of the stock shader sources: "shaders" next to this file (found through the module's own path).
+local function defaultShaderDir(): string
+	local source = debug.info(1, "s")
+	local dir = zune.fs.path.dirname((string.gsub(source, "^@", "")))
+	return zune.fs.path.join(if dir and dir ~= "" then dir else ".", "shaders")
+end
+
+-- overrides: nil | "folder" holding the standard shader files | { [name]: "path" | SPIR-V buffer } (any subset; the rest come from the default folder)
+--   or { libraryPath = ..., shaders = <either of the above> }
+-- Shaders are GLSL (.vert / .frag, compiled by shader.luau) or precompiled .spv files.
+function Renderer:_createPipelines(overrides: any)
+	-- accepted: "folder" | { libraryPath = "shaderc library", shaders = "folder" | { name = "file" } } | { name = "file" } (per shader)
+	local shaders = overrides
+	if type(overrides) == "table" and (overrides.libraryPath ~= nil or overrides.shaders ~= nil) then
+		if overrides.libraryPath then
+			shaderLoader.setLibraryPath(overrides.libraryPath)
+		end
+		shaders = overrides.shaders
+	end
+	local dir = if type(shaders) == "string" then shaders else defaultShaderDir()
+	local custom: { [string]: any } = if type(shaders) == "table" then shaders else {}
 	local function code(name: string): any
-		return sh[name] or spirvModules[name]
+		local entry = custom[name] or zune.fs.path.join(dir, SHADER_FILES[name])
+		if type(entry) == "string" then
+			return shaderLoader.load(entry, { cache = true })
+		end
+		return entry
 	end
 	local a = vk.arena()
 	self.mods = {

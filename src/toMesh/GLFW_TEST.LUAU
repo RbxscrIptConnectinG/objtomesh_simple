@@ -14,6 +14,10 @@ local app = ui.createApp({
 	renderer = {
 		libraryPath = "C:/Windows/System32/vulkan-1.dll",
 	},
+	shaders = {
+		libraryPath = "./libs/bin/shaderc_shared.dll",
+		shaders = "./assets/toMesh/bin/shaders",
+	},
 	vsync = true,
 	font = "./assets/toMesh/fonts/cour/Courier New.ttf",
 })

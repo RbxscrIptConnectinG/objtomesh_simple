@@ -680,7 +680,6 @@ function Widget:_onKey(key: number, mods: number)
 		elseif self.onSubmit then
 			self.onSubmit(self, self.text)
 		end
-		gui:_setFocus(nil)
 	end
 end
 
@@ -1580,8 +1579,11 @@ export type AppOptions = {
 	glfwPath: string?,
 	renderer: any?,
 	font: any?, -- default font: path to a .ttf/.otf file (or a font object)
+	-- shaders: "folder"                                  folder with ui.vert ui.frag model.vert model.frag model_dither.frag
+	--          { libraryPath = "shaderc_shared.dll",     where the shaderc library is (optional, searched automatically otherwise)
+	--            shaders = "folder" | { modelFrag = "my/water.frag", ... } }   (optional; default: "shaders" beside renderer.luau)
+	shaders: any?,
 	ZIndexBehavior: string?, -- "Sibling" (default) or "Global"; can be changed later via app.root.ZIndexBehavior
-	vsync: boolean?,
 }
 
 function ui.createApp(opts: AppOptions?): any
@@ -1590,13 +1592,22 @@ function ui.createApp(opts: AppOptions?): any
 	local window, err = glfw.createWindow(o.width or 960, o.height or 600, o.title or "zune-vkui", {
 		noApi = true,
 		resizable = o.resizable,
-		vsync = o.vsync,
 	})
 	if not window then
 		glfw.terminate()
 		error(err)
 	end
-	local ok, renderer = pcall(Renderer.new, glfw, window, o.renderer)
+	-- the shaders option is handed to the renderer as is (it sets up the shader loader itself)
+	local rendererOptions: { [string]: any } = {}
+	if o.renderer then
+		for k, v in o.renderer do
+			rendererOptions[k] = v
+		end
+	end
+	if o.shaders ~= nil then
+		rendererOptions.shaders = o.shaders
+	end
+	local ok, renderer = pcall(Renderer.new, glfw, window, rendererOptions)
 	if not ok then
 		window:destroy()
 		glfw.terminate()
