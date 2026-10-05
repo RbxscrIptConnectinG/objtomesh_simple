@@ -5,13 +5,13 @@ local parseObj = require("@applibs/mesh/parsers/obj")
 
 export type options = {
 	draco: Draco.EncodeOptions?,
-	autoLODLevels: number?,
+	autoLODs: any?,
 }
 
 return function(objData, options: options): string
 	options = options or {} :: options
 
-	local mesh = parseObj(objData, true, options.autoLODLevels)
+	local mesh = parseObj(objData, true, options.autoLODs)
 	local dracoBytes = Draco.encodeMeshFull(mesh.vertices, mesh.faces, options.draco)
 	local dracoSize = buffer.len(dracoBytes)
 	local lodOffsets = meshUtils.resolveLodOffsets(mesh)

@@ -3,7 +3,7 @@ local sift = require("@libs/luau/sift")
 local V4 = require("./v4.01")
 
 export type options = {
-	autoLODLevels: number?,
+	autoLODs: any?,
 }
 
 return function(objData, options: options)
