@@ -3,8 +3,17 @@ local fs = zune.fs
 
 local ui = require("@libs/luau/UIFramework")
 local png = require("@libs/luau/UIFramework/png")
+local win_popups = require("@libs/luau/WinLibs/popup")
 
 local tick = time.timestampMillis
+if fs.stat("C:/Windows/System32/vulkan-1.dll").kind == "none" then
+	win_popups.alert(
+		`Missing "{"C:/Windows/System32/vulkan-1.dll"}"\nplease install vulkan runtime {"https://vulkan.lunarg.com/sdk/home"}`,
+		`DLL is missing`,
+		"warning"
+	)
+	return
+end
 
 local app = ui.createApp({
 	width = 1000,
@@ -21,6 +30,7 @@ local app = ui.createApp({
 	vsync = true,
 	font = "./assets/toMesh/fonts/cour/Courier New.ttf",
 })
+
 local renderer = app.renderer
 
 local parsedObj

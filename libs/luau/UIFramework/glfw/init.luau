@@ -226,8 +226,25 @@ local scratch: { any } = {} -- 3 x 8 bytes of native memory for out-parameters
 local windows: { any } = {}
 local pendingError: any = nil -- error thrown inside a callback, rethrown from pollEvents
 
+local function libraryCandidates(): { string }
+	local os = string.lower(zune.platform.os)
+	if string.find(os, "win") and not string.find(os, "darwin") then
+		-- NOTE: Zig's DynLib on Windows may not search PATH/System32 for bare names,
+		-- so also try the current directory. Pass an explicit path to glfw.init() if needed.
+		return { "glfw3.dll", "./glfw3.dll", "glfw.dll", "./glfw.dll" }
+	elseif string.find(os, "mac") or string.find(os, "darwin") then
+		return {
+			"libglfw.3.dylib",
+			"libglfw.dylib",
+			"/opt/homebrew/lib/libglfw.3.dylib",
+			"/usr/local/lib/libglfw.3.dylib",
+		}
+	end
+	return { "libglfw.so.3", "libglfw.so" }
+end
+
 local function openLibrary(custom: string?): any
-	local candidates = if custom then { custom } else { "./libs/bin/glfw3.dll" }
+	local candidates = if custom then { custom } else libraryCandidates()
 	local lastError: any = nil
 	for _, path in candidates do
 		local ok, result = pcall(ffi.dlopen, path, SIGNATURES)
@@ -457,6 +474,19 @@ function Window:setClipboard(str: string)
 	ffi.free(c)
 end
 
+-- Native HWND of the window (Windows only; nil elsewhere). Useful as the `owner` of popup.luau dialogs.
+local win32Getter: any = nil
+function Window:getWin32Window(): any
+	if win32Getter == nil then
+		local symbol = lib:getSymbol("glfwGetWin32Window") -- only exported by the Windows build of GLFW
+		win32Getter = if symbol then ffi.fn({ returns = ptr, args = { ptr } }, symbol) else false
+	end
+	if not win32Getter then
+		return nil
+	end
+	return win32Getter(self.handle)
+end
+
 function Window:destroy()
 	if self._destroyed then
 		return
@@ -539,6 +569,7 @@ end
 function glfw.createWindow(width: number, height: number, title: string, options: WindowOptions?): (any?, string?)
 	requireInit()
 	local o: WindowOptions = options or {}
+
 	lib.glfwDefaultWindowHints()
 
 	if o.noApi then
