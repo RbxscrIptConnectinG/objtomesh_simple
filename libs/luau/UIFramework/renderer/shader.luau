@@ -7,6 +7,8 @@
 	local spirv, err = shader.compile(glslSource, "frag")       -- from a string; returns nil, err on failure
 	shader.load("shaders/custom.vert", { cache = true })        -- also writes shaders/custom.vert.spv and reuses it while it is newer than the source
 
+	`#include "other.glsl"` lines are expanded by this module (relative to the including file); error line numbers refer to the expanded text.
+
 	Extensions: .vert / .frag (also .vs / .fs, .glsl needs `stage = "vert" | "frag"` in the options) are compiled; .spv is read as is.
 
 	How it works: GLSL -> SPIR-V needs a compiler, and Vulkan itself only accepts SPIR-V. This module loads Google's shaderc
@@ -55,7 +57,7 @@ local lib: any = nil
 local libError: string? = nil
 
 local function openLibrary(): any
-	return ffi.dlopen(libraryPath, SIGNATURES)
+	return ffi.dlopen("./libs/bin/shaderc_shared.dll", SIGNATURES)
 end
 
 -- true when GLSL files can be compiled on this machine
@@ -124,6 +126,27 @@ local function extension(path: string): string
 	return string.lower(string.match(path, "%.([%w]+)$") or "")
 end
 
+-- Replaces `#include "file"` lines with the file's text (relative to the including file; GLSL has no include support of its own).
+-- Every file read is appended to `deps` (the cache is stale when any of them is newer).
+local function expand(path: string, deps: { string }, depth: number): string
+	if depth > 8 then
+		error(`shader: #include nesting too deep at {path}`, 0)
+	end
+	table.insert(deps, path)
+	local source = zune.fs.readFileSync(path) :: string
+	local dir = zune.fs.path.dirname(path) or "."
+	local out: { string } = {}
+	for line in string.gmatch(source .. "\n", "([^\n]*)\n") do
+		local name = string.match(line, '^%s*#include%s+"([^"]+)"%s*$')
+		if name then
+			table.insert(out, expand(zune.fs.path.join(dir, name), deps, depth + 1))
+		else
+			table.insert(out, line)
+		end
+	end
+	return table.concat(out, "\n")
+end
+
 -- Reads a shader file and returns SPIR-V as a buffer. Raises an error with the compiler output when it fails.
 -- options: stage (for .glsl or unusual extensions), cache (write/use "<path>.spv")
 local function load(path: string, options: { stage: string?, cache: boolean? }?): buffer
@@ -137,16 +160,27 @@ local function load(path: string, options: { stage: string?, cache: boolean? }?)
 		error(`shader: cannot tell the stage of "{path}" - use .vert/.frag/.spv or pass options.stage`, 2)
 	end
 
+	local deps: { string } = {}
+	local source = expand(path, deps, 0)
+
 	local cachePath = path .. ".spv"
 	if o.cache then
-		local okA, srcStat: any = pcall(zune.fs.metadata, path)
-		local okB, cacheStat: any = pcall(zune.fs.metadata, cachePath)
-		if okA and okB and cacheStat.modified_at >= srcStat.modified_at then
-			return zune.fs.readFileSync(cachePath, true) :: buffer
+		local okC, cacheStat: any = pcall(zune.fs.metadata, cachePath)
+		if okC then
+			local fresh = true
+			for _, dep in deps do
+				local okD, depStat: any = pcall(zune.fs.metadata, dep)
+				if not okD or depStat.modified_at > cacheStat.modified_at then
+					fresh = false
+					break
+				end
+			end
+			if fresh then
+				return zune.fs.readFileSync(cachePath, true) :: buffer
+			end
 		end
 	end
-	print(path)
-	local source = zune.fs.readFileSync(path) :: string
+
 	local spirv, err = compile(source, stage, path)
 	if not spirv then
 		error(err or "shader: compilation failed", 2)

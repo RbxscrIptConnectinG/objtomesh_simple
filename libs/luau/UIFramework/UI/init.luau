@@ -8,7 +8,8 @@
 	app:run()
 
 	Widgets: Frame, Button, Image, ModelView, ScrollingFrame, ImageSelector, Text, TextBox
-	Common props: antiAlias (false = hard-edged 1-bit glyphs for any text; default true), transparency (0 opaque .. 1 invisible; fades ONLY the background `color` - text, border, images and
+	Common props: antiAlias (text glyph edges: nil / "Grayscale" smooth | "None" hard-edged 1-bit), interpolation (texture filtering of Image / ModelView / Button icon:
+	                 "Linear" (default) | "Nearest Neighbor" | "Cubic" | "Cubic B-spline" | "Mitchell" | "Lanczos"), transparency (0 opaque .. 1 invisible; fades ONLY the background `color` - text, border, images and
 	                 models stay fully visible), position, size, anchor, color {r,g,b,a}, visible, border {width=, color=}, clip, layout, name,
 	  ZIndex (default 0): draw order. Higher draws on top (and wins hit tests). Any number, negatives allowed.
 	  ZIndexBehavior ("Sibling" | "Global"): how a widget's descendants are ordered. Set it on app.root (everything) or on any
@@ -47,9 +48,10 @@
 	                 Methods: focus(), blur(), isFocused(), setText(str) (silent), selectAll().
 	                 Keys: arrows (+Shift selects, +Ctrl/Alt moves by word), Home/End (+Ctrl = whole text), Backspace/Delete,
 	                 Ctrl/Cmd+A/C/X/V (system clipboard), Enter, Esc (blur). Mouse: click, drag-select, Shift+click.
-	Image:           texture, fit = "stretch" | "contain" | "cover"; `color` is the tint; imageTransparency (0..1); pixelated (nearest-neighbour sampling), optional backgroundColor {r,g,b,a} behind
+	Image:           texture, fit = "stretch" | "contain" | "cover"; `color` is the tint; imageTransparency (0..1); optional backgroundColor {r,g,b,a} behind
 	                 the picture, faded by `transparency`
-	ModelView:       transparencyMethod ("blend" default | "dither" dot-pattern, applies to imageTransparency / modelColor alpha), pixelated (nearest-neighbour texture sampling), imageTransparency (0..1, fades the rendered model only; `transparency` fades the background only), model, texture, modelColor, yaw, pitch, zoom, fov, autoRotate (rad/s), zoomable,
+	ModelView:       highlight = { fillColor, fillTransparency, outlineColor, outlineTransparency, outlineThickness, depthMode } (real highlight: flat fill over the visible
+	                 surface + silhouette outline, no copied/inverted mesh; see README), transparencyMethod ("blend" default | "dither" dot-pattern, applies to imageTransparency / modelColor alpha), imageTransparency (0..1, fades the rendered model only; `transparency` fades the background only), model, texture, modelColor, yaw, pitch, zoom, fov, autoRotate (rad/s), zoomable,
 	                 doubleSided (default true; false culls back faces - faster, but triangles must wind counter-clockwise)
 	ScrollingFrame:  scrollY, scrollSpeed, scrollbarColor, thumbColor  (always clips; wheel + scrollbar drag)
 	ImageSelector:   a scrolling thumbnail grid. items = { Texture | {texture=, name=} }, thumbSize, target (a ModelView /
@@ -425,6 +427,74 @@ function Widget:_fitTextSize(innerW: number, innerH: number): number
 	return best
 end
 
+-- interpolation (textures: Image, ModelView, Button icon): how texels are filtered when a texture is scaled. Case, spaces and dashes are ignored.
+--   "Linear" (default; "Bilinear")        smooth
+--   "Nearest Neighbor" ("Nearest", "Point")  hard blocky pixels
+--   "Cubic" ("Bicubic", "Catmull-Rom")    sharper than linear
+--   "Cubic B-spline" ("BSpline")          very smooth
+--   "Mitchell"                            balanced cubic (little ringing)
+--   "Lanczos"                             sharpest, best for downscaling
+local INTERPOLATION: { [string]: number } = {
+	linear = 0,
+	bilinear = 0,
+	nearest = 1,
+	nearestneighbor = 1,
+	nearestneighbour = 1,
+	point = 1,
+	cubic = 2,
+	bicubic = 2,
+	catmullrom = 2,
+	bspline = 3,
+	cubicbspline = 3,
+	mitchell = 4,
+	lanczos = 5,
+	lanczos3 = 5,
+}
+
+local function normalizeName(value: any): string
+	local key = string.lower(tostring(value))
+	return (string.gsub(key, "[^%a%d]", ""))
+end
+
+-- antiAlias (text glyph smoothing): nil | "Grayscale" (default, smooth edges) | "None" (hard-edged 1-bit glyphs, for pixel fonts)
+local ANTIALIAS: { [string]: boolean } =
+	{ grayscale = true, greyscale = true, smooth = true, default = true, none = false, off = false }
+
+function Widget:_interp(): number
+	local value = self.interpolation
+	if value == nil then
+		return 0
+	end
+	local cached = self._interpCache
+	if cached and cached[1] == value then
+		return cached[2]
+	end
+	local id = INTERPOLATION[normalizeName(value)]
+	if not id then
+		error(
+			`ui: unknown interpolation "{value}" (use "Linear", "Nearest Neighbor", "Cubic", "Cubic B-spline", "Mitchell" or "Lanczos")`,
+			0
+		)
+	end
+	self._interpCache = { value, id }
+	return id
+end
+
+-- true = smooth glyph edges
+function Widget:_smoothText(): boolean
+	local value = self.antiAlias
+	if value == nil or value == true then
+		return true
+	elseif value == false then
+		return false
+	end
+	local smooth = ANTIALIAS[normalizeName(value)]
+	if smooth == nil then
+		error(`ui: unknown antiAlias "{value}" (use nil / "Grayscale" or "None")`, 0)
+	end
+	return smooth
+end
+
 -- Opacity multipliers (0 = opaque, 1 = invisible in the props). `transparency` fades ONLY the background quad;
 -- `imageTransparency` fades ONLY the Image texture / ModelView model. Text, border, scrollbar and icons are never affected.
 function Widget:_alpha(): number
@@ -452,7 +522,7 @@ function Widget:_drawText(r: any)
 		color,
 		self.align,
 		self.valign,
-		self.antiAlias ~= false
+		self:_smoothText()
 	)
 end
 
@@ -742,10 +812,10 @@ function Widget:_drawTextBox(r: any)
 	end
 
 	if n > 0 then
-		engine:draw(r, layout, ox, oy, g.W, layout.height, self.textColor, self.align, "top", self.antiAlias ~= false)
+		engine:draw(r, layout, ox, oy, g.W, layout.height, self.textColor, self.align, "top", self:_smoothText())
 	elseif self.placeholder and self.placeholder ~= "" then
 		local pl = self:_textLayout(if self.multiline then math.max(g.iw, 1) else nil, self.placeholder)
-		engine:draw(r, pl, g.ix, oy, g.iw, pl.height, self.placeholderColor, self.align, "top", self.antiAlias ~= false)
+		engine:draw(r, pl, g.ix, oy, g.iw, pl.height, self.placeholderColor, self.align, "top", self:_smoothText())
 	end
 
 	if focused and self.editable and (gui.time - (self._blinkT or 0)) % 1.06 < 0.53 then
@@ -1017,6 +1087,32 @@ local function scrollbarGeometry(w: any): (number?, number?, number?, number?)
 	return trackX, thumbY, thumbH, maxScroll
 end
 
+-- highlight = { fillColor = {r,g,b}, fillTransparency = 0..1, outlineColor = {r,g,b}, outlineTransparency = 0..1, outlineThickness = px,
+--               depthMode = "Occluded" | "AlwaysOnTop" }
+-- (all optional; defaults: red fill at 0.5, white outline at 0, 2 px, "Occluded"). A colour's own alpha is multiplied in. false / nil = no highlight.
+local function normalizeHighlight(h: any): any
+	if not h then
+		return nil
+	end
+	local fc, oc = h.fillColor or { 1, 0, 0 }, h.outlineColor or { 1, 1, 1 }
+	local mode = normalizeName(h.depthMode or "Occluded")
+	local onTop
+	if mode == "occluded" then
+		onTop = false
+	elseif mode == "alwaysontop" then
+		onTop = true
+	else
+		error(`ui: unknown highlight depthMode "{h.depthMode}" (use "Occluded" or "AlwaysOnTop")`, 0)
+	end
+	local ft, ot = math.clamp(h.fillTransparency or 0.5, 0, 1), math.clamp(h.outlineTransparency or 0, 0, 1)
+	return {
+		fill = { fc[1], fc[2], fc[3], (fc[4] or 1) * (1 - ft) },
+		outline = { oc[1], oc[2], oc[3], (oc[4] or 1) * (1 - ot) },
+		thickness = math.max(h.outlineThickness or 2, 0),
+		onTop = onTop,
+	}
+end
+
 -- Background, image, model and text of this widget (children are drawn separately, in z order).
 function Widget:_drawBody(r: any, dt: number)
 	local x, y, w, h = self.ax, self.ay, self.aw, self.ah
@@ -1062,7 +1158,7 @@ function Widget:_drawBody(r: any, dt: number)
 				v0,
 				u1,
 				v1,
-				self.pixelated == true
+				self:_interp()
 			)
 		end
 	else
@@ -1103,7 +1199,7 @@ function Widget:_drawBody(r: any, dt: number)
 			nil,
 			nil,
 			nil,
-			self.pixelated == true
+			self:_interp()
 		)
 	end
 
@@ -1124,8 +1220,9 @@ function Widget:_drawBody(r: any, dt: number)
 			{ mc[1], mc[2], mc[3], (mc[4] or 1) * self:_imageAlpha() },
 			self.texture,
 			self.doubleSided,
-			self.pixelated == true,
-			self.transparencyMethod
+			self:_interp(),
+			self.transparencyMethod,
+			normalizeHighlight(self.highlight)
 		)
 	end
 

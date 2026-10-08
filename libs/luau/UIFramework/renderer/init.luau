@@ -364,8 +364,8 @@ function Renderer.new(glfw: any, window: any, options: Options?): any
 	self.vp = ffi.alloc(24, 8)
 	self.rect = ffi.alloc(16, 8)
 	self.pcUI = ffi.alloc(8, 8)
-	self.clearAtt =
-		vk.new("VkClearAttachment", { aspectMask = C.ASPECT_DEPTH, colorAttachment = 0, v0 = 1.0 }, self.persist)
+	self.modeBuf = buffer.create(4) -- fragment push constant: interpolation mode
+	self.hlScratch = buffer.create(96) -- push-constant copy used by the highlight passes
 
 	-- sampler, descriptor layout/pool
 	self.sampler = self:_create(
@@ -427,18 +427,28 @@ function Renderer.new(glfw: any, window: any, options: Options?): any
 	)
 
 	-- depth format
+	-- a format with a stencil aspect is preferred: model highlights (outline) need the stencil buffer
 	self.depthFormat = 0
+	self.hasStencil = false
 	local fp = a:alloc(16)
-	for _, fmt in { C.FORMAT_D32_SFLOAT, C.FORMAT_X8_D24, C.FORMAT_D16_UNORM } do
+	for _, fmt in { 130, 129, C.FORMAT_D32_SFLOAT, C.FORMAT_X8_D24, C.FORMAT_D16_UNORM } do -- 130 D32_SFLOAT_S8_UINT, 129 D24_UNORM_S8_UINT
 		L.vkGetPhysicalDeviceFormatProperties(self.pd, fmt, fp)
 		if bit32.btest(fp:readu32(4), 0x200) then -- optimalTilingFeatures & DEPTH_STENCIL_ATTACHMENT
 			self.depthFormat = fmt
+			self.hasStencil = fmt == 130 or fmt == 129
 			break
 		end
 	end
 	if self.depthFormat == 0 then
 		error("vulkan: no supported depth format")
 	end
+	-- resets depth (1.0) and stencil (0) inside a model view
+	self.clearAtt = vk.new("VkClearAttachment", {
+		aspectMask = if self.hasStencil then 6 else C.ASPECT_DEPTH,
+		colorAttachment = 0,
+		v0 = 1.0,
+		v1 = 0,
+	}, self.persist)
 	a:free()
 
 	-- swapchain-dependent objects
@@ -583,7 +593,7 @@ function Renderer:_createSwapchain(): boolean
 	end
 
 	sc.depth = self:_makeImage(w, h, self.depthFormat, C.IMAGE_DEPTH_ATTACHMENT, C.MEM_DEVICE_LOCAL)
-	sc.depthView = self:_makeView(sc.depth.image, self.depthFormat, C.ASPECT_DEPTH)
+	sc.depthView = self:_makeView(sc.depth.image, self.depthFormat, if self.hasStencil then 6 else C.ASPECT_DEPTH)
 
 	self.sc = sc
 	self.width, self.height = w, h
@@ -665,7 +675,7 @@ function Renderer:_createRenderPass()
 			samples = 1,
 			loadOp = 1,
 			storeOp = 1,
-			stencilLoadOp = 2,
+			stencilLoadOp = if self.hasStencil then 1 else 2,
 			stencilStoreOp = 1,
 			initialLayout = C.LAYOUT_UNDEFINED,
 			finalLayout = C.LAYOUT_DEPTH_ATTACHMENT,
@@ -737,7 +747,8 @@ function Renderer:_createPipeline(
 	attrs: { { [string]: number } },
 	blend: boolean,
 	depth: boolean,
-	cullMode: number?
+	cullMode: number?,
+	depthStencil
 ): any
 	local a = vk.arena()
 	local L = self.L
@@ -762,25 +773,40 @@ function Renderer:_createPipeline(
 		{ sType = C.ST_PIPELINE_VIEWPORT, viewportCount = 1, scissorCount = 1 },
 		a
 	)
-	local raster = vk.new("VkPipelineRasterizationStateCreateInfo", {
+	local rasterFields: { [string]: number } = {
 		sType = C.ST_PIPELINE_RASTERIZATION,
 		polygonMode = 0,
 		cullMode = cullMode or 0,
 		frontFace = 0,
 		lineWidth = 1.0, -- frontFace 0 = counter-clockwise
-	}, a)
+	}
+
+	depthStencil = depthStencil or {}
+
+	for k, v in depthStencil do -- depthBias* entries of the override table belong to the rasterizer state
+		if string.sub(k, 1, 9) == "depthBias" then
+			rasterFields[k] = v
+		end
+	end
+	local raster = vk.new("VkPipelineRasterizationStateCreateInfo", rasterFields, a)
 	local ms = vk.new(
 		"VkPipelineMultisampleStateCreateInfo",
 		{ sType = C.ST_PIPELINE_MULTISAMPLE, rasterizationSamples = 1 },
 		a
 	)
-	local ds = vk.new("VkPipelineDepthStencilStateCreateInfo", {
+	local dsFields: { [string]: number } = {
 		sType = C.ST_PIPELINE_DEPTH_STENCIL,
 		depthTestEnable = if depth then 1 else 0,
 		depthWriteEnable = if depth then 1 else 0,
 		depthCompareOp = 1,
 		maxDepthBounds = 1.0,
-	}, a)
+	}
+	for k, v in depthStencil do -- overrides: depth compare op, stencil state (f0..f6 = front, b0..b6 = back)
+		if string.sub(k, 1, 9) ~= "depthBias" then
+			dsFields[k] = v
+		end
+	end
+	local ds = vk.new("VkPipelineDepthStencilStateCreateInfo", dsFields, a)
 	local att = vk.new(
 		"VkPipelineColorBlendAttachmentState",
 		if blend
@@ -836,6 +862,8 @@ local SHADER_FILES = {
 	modelVert = "vert/model.vert",
 	modelFrag = "frag/model.frag",
 	modelFragDither = "frag/model_dither.frag",
+	highlightVert = "vert/highlight.vert",
+	highlightFrag = "frag/highlight.frag",
 }
 
 -- Folder of the stock shader sources: "shaders" next to this file (found through the module's own path).
@@ -873,6 +901,8 @@ function Renderer:_createPipelines(overrides: any)
 		modelVert = self:_shaderModule(code("modelVert")),
 		modelFrag = self:_shaderModule(code("modelFrag")),
 		modelFragDither = self:_shaderModule(code("modelFragDither")),
+		highlightVert = self:_shaderModule(code("highlightVert")),
+		highlightFrag = self:_shaderModule(code("highlightFrag")),
 	}
 
 	self.uiLayout = self:_create(
@@ -881,12 +911,11 @@ function Renderer:_createPipelines(overrides: any)
 			sType = C.ST_PIPELINE_LAYOUT_CREATE_INFO,
 			setLayoutCount = 1,
 			pSetLayouts = vk.ptrArray({ self.dsl }, a),
-			pushConstantRangeCount = 1,
-			pPushConstantRanges = vk.new(
-				"VkPushConstantRange",
+			pushConstantRangeCount = 2, -- vertex: screen scale (8 bytes); fragment: interpolation mode (4 bytes)
+			pPushConstantRanges = vk.newArray("VkPushConstantRange", {
 				{ stageFlags = C.SHADER_VERTEX, offset = 0, size = 8 },
-				a
-			),
+				{ stageFlags = C.SHADER_FRAGMENT, offset = 8, size = 4 },
+			}, a),
 		}, a)
 	)
 	self.modelLayout = self:_create(
@@ -895,12 +924,11 @@ function Renderer:_createPipelines(overrides: any)
 			sType = C.ST_PIPELINE_LAYOUT_CREATE_INFO,
 			setLayoutCount = 1,
 			pSetLayouts = vk.ptrArray({ self.dsl }, a),
-			pushConstantRangeCount = 1,
-			pPushConstantRanges = vk.new(
-				"VkPushConstantRange",
+			pushConstantRangeCount = 2, -- vertex: MVP + light + colour (96 bytes); fragment: interpolation mode (4 bytes)
+			pPushConstantRanges = vk.newArray("VkPushConstantRange", {
 				{ stageFlags = C.SHADER_VERTEX, offset = 0, size = 96 },
-				a
-			),
+				{ stageFlags = C.SHADER_FRAGMENT, offset = 96, size = 4 },
+			}, a),
 		}, a)
 	)
 
@@ -956,6 +984,47 @@ function Renderer:_createPipelines(overrides: any)
 		true,
 		2
 	)
+	-- highlight: (a) fill = the model again with a flat colour (depthMode "Occluded": only where the model is visible; "AlwaysOnTop": no depth test), marks the
+	-- stencil buffer with 1; (b) outline = the silhouette grown by a few pixels, drawn only where the stencil is still 0 (outside the model).
+	-- Stencil ops: KEEP 0, INCREMENT_AND_CLAMP 3; compare op EQUAL 2.
+	if self.hasStencil then
+		local function stencil(passOp: number, compareOp: number, reference: number): { [string]: number }
+			return {
+				stencilTestEnable = 1,
+				f0 = 0,
+				f1 = passOp,
+				f2 = 0,
+				f3 = compareOp,
+				f4 = 0xFF,
+				f5 = 0xFF,
+				f6 = reference,
+				b0 = 0,
+				b1 = passOp,
+				b2 = 0,
+				b3 = compareOp,
+				b4 = 0xFF,
+				b5 = 0xFF,
+				b6 = reference,
+			}
+		end
+		-- every pixel is painted once: the first fragment that reaches it (stencil 0) increments the stencil to 1
+		local fill = stencil(3, 2, 0)
+		fill.depthTestEnable, fill.depthWriteEnable, fill.depthCompareOp = 1, 0, 3 -- "Occluded": LEQUAL, no depth writes
+		-- The model is drawn by another shader, so equal depth is not guaranteed bit for bit (z-fighting). Pull the fill towards the camera
+		-- by a few depth units + slope, far less than the gap to any surface that is really behind.
+		fill.depthBiasEnable, fill.depthBiasConstantFactor, fill.depthBiasSlopeFactor = 1, -16.0, -2.0
+		local fillTop = stencil(3, 2, 0)
+		fillTop.depthTestEnable, fillTop.depthWriteEnable = 0, 0 -- "AlwaysOnTop": no depth test at all
+		local outline = stencil(3, 2, 0)
+		outline.depthTestEnable, outline.depthWriteEnable = 0, 0
+		local hv, hf, ml = self.mods.highlightVert, self.mods.highlightFrag, self.modelLayout
+		self.hlFillPipeline = self:_createPipeline(hv, hf, ml, MODEL_STRIDE, modelAttrs, true, true, 0, fill)
+		self.hlFillPipelineCull = self:_createPipeline(hv, hf, ml, MODEL_STRIDE, modelAttrs, true, true, 2, fill)
+		self.hlFillTopPipeline = self:_createPipeline(hv, hf, ml, MODEL_STRIDE, modelAttrs, true, false, 0, fillTop)
+		self.hlFillTopPipelineCull = self:_createPipeline(hv, hf, ml, MODEL_STRIDE, modelAttrs, true, false, 2, fillTop)
+		self.hlOutlinePipeline = self:_createPipeline(hv, hf, ml, MODEL_STRIDE, modelAttrs, true, false, 0, outline)
+		self.hlOutlinePipelineCull = self:_createPipeline(hv, hf, ml, MODEL_STRIDE, modelAttrs, true, false, 2, outline)
+	end
 	a:free()
 end
 
@@ -1261,16 +1330,16 @@ function Renderer:quad(
 	v0: number?,
 	u1: number?,
 	v1: number?,
-	nearest: boolean?
+	interp: number?
 )
 	if w <= 0 or h <= 0 or a <= 0 or self.vcount + 6 > self.maxVerts then
 		return
 	end
 	tex = tex or self.white
 	local cur = self.cur
-	nearest = nearest == true
-	if not cur or cur.tex ~= tex or cur.clip ~= self.clip or cur.nearest ~= nearest then
-		cur = { kind = "quads", tex = tex, nearest = nearest, clip = self.clip, first = self.vcount, count = 0 }
+	interp = interp or 0
+	if not cur or cur.tex ~= tex or cur.clip ~= self.clip or cur.interp ~= interp then
+		cur = { kind = "quads", tex = tex, interp = interp, clip = self.clip, first = self.vcount, count = 0 }
 		table.insert(self.cmds, cur)
 		self.cur = cur
 	end
@@ -1303,8 +1372,9 @@ end
 	light: {x, y, z} light direction in *object space* (unit length)
 	color: {r, g, b, a}   (multiplied with the texture)
 	texture: optional Texture (nil = untextured / white)
+	highlight: nil | { fill = {r,g,b,a}, outline = {r,g,b,a}, thickness = px, onTop = boolean (true = depthMode "AlwaysOnTop") }  (needs a depth format with stencil; ignored otherwise)
 	method: "blend" (default, alpha blending) | "dither" (4x4 dot pattern, alpha picks how many dots; alpha-only texture cutouts included)
-	nearest: true = nearest-neighbour texture filtering (pixelated)
+	interp: texture interpolation id: 0 Linear (default), 1 Nearest Neighbor, 2 Cubic (Catmull-Rom), 3 Cubic B-spline, 4 Mitchell, 5 Lanczos-3
 	doubleSided: false = back faces are culled (counter-clockwise triangles are front faces), anything else = drawn
 ]]
 function Renderer:drawModel(
@@ -1318,8 +1388,9 @@ function Renderer:drawModel(
 	color: { number },
 	texture: any?,
 	doubleSided: boolean?,
-	nearest: boolean?,
-	method: string?
+	interp: number?,
+	method: string?,
+	highlight: any?
 )
 	local pc = buffer.create(96)
 	for i = 1, 16 do
@@ -1339,8 +1410,9 @@ function Renderer:drawModel(
 		pc = pc,
 		tex = texture or self.white,
 		cull = (doubleSided == false),
-		nearest = nearest == true,
+		interp = interp or 0,
 		dither = (method == "dither"),
+		hl = highlight,
 	})
 	self.cur = nil
 end
@@ -1368,6 +1440,59 @@ function Renderer:_setViewport(cb: any, x: number, y: number, w: number, h: numb
 	vp:writef32(16, 0.0)
 	vp:writef32(20, 1.0)
 	self.L.vkCmdSetViewport(cb, 0, 1, vp)
+end
+
+-- Fill + outline highlight for a model that was just drawn (same vertex buffer / descriptor set are still bound).
+function Renderer:_drawHighlight(cb: any, cmd: any, viewW: number, viewH: number)
+	local L = self.L
+	local hl = cmd.hl
+	local pc, scratch = cmd.pc, self.hlScratch
+	local count = cmd.model.vertexCount
+
+	local function setColor(c: { number })
+		for i = 1, 4 do
+			buffer.writef32(scratch, 76 + i * 4, c[i]) -- colour lives at byte 80
+		end
+	end
+
+	-- pass 1: flat fill over the visible surface; also writes stencil = 1 there
+	buffer.copy(scratch, 0, pc, 0, 96)
+	setColor(hl.fill)
+	local fillPipeline = if hl.onTop
+		then (if cmd.cull then self.hlFillTopPipelineCull else self.hlFillTopPipeline)
+		else (if cmd.cull then self.hlFillPipelineCull else self.hlFillPipeline)
+	L.vkCmdBindPipeline(cb, 0, fillPipeline)
+	L.vkCmdPushConstants(cb, self.modelLayout, C.SHADER_VERTEX, 0, 96, scratch)
+	L.vkCmdDraw(cb, count, 1, 0, 0)
+
+	-- pass 2: silhouette grown by `thickness` pixels (model redrawn shifted along a ring of screen-space offsets); stencil makes every
+	-- pixel get painted once, and never inside the model
+	local t = hl.thickness
+	if hl.outline[4] > 0 and t > 0 and viewW > 0 and viewH > 0 then
+		L.vkCmdBindPipeline(cb, 0, if cmd.cull then self.hlOutlinePipelineCull else self.hlOutlinePipeline)
+		local function ring(radius: number, n: number, phase: number)
+			for k = 0, n - 1 do
+				local angle = phase + k * 2 * math.pi / n
+				local ox, oy = 2 * radius * math.cos(angle) / viewW, 2 * radius * math.sin(angle) / viewH
+				for col = 0, 3 do -- clip.xy += offset * clip.w, applied to every column of the MVP
+					local base = col * 16
+					local w = buffer.readf32(pc, base + 12)
+					buffer.writef32(scratch, base, buffer.readf32(pc, base) + ox * w)
+					buffer.writef32(scratch, base + 4, buffer.readf32(pc, base + 4) + oy * w)
+					buffer.writef32(scratch, base + 8, buffer.readf32(pc, base + 8))
+					buffer.writef32(scratch, base + 12, w)
+				end
+				L.vkCmdPushConstants(cb, self.modelLayout, C.SHADER_VERTEX, 0, 96, scratch)
+				L.vkCmdDraw(cb, count, 1, 0, 0)
+			end
+		end
+		buffer.copy(scratch, 0, pc, 0, 96)
+		setColor(hl.outline)
+		ring(t, 16, 0)
+		if t >= 3 then
+			ring(t * 0.5, 12, math.pi / 12) -- inner ring so thick outlines have no gaps
+		end
+	end
 end
 
 function Renderer:endFrame()
@@ -1407,12 +1532,13 @@ function Renderer:endFrame()
 
 	local bound: string? = nil
 	local boundTex: any = nil
+	local lastUiMode: number? = nil
 
 	local function useUI()
 		if bound == "ui" then
 			return
 		end
-		bound, boundTex = "ui", nil
+		bound, boundTex, lastUiMode = "ui", nil, nil
 		L.vkCmdBindPipeline(cb, 0, self.uiPipeline)
 		self.pcUI:writef32(0, 2 / W)
 		self.pcUI:writef32(4, 2 / H)
@@ -1429,7 +1555,12 @@ function Renderer:endFrame()
 				if cmd.count > 0 then
 					useUI()
 					self:_setScissor(cb, cx, cy, cw, ch)
-					local wantSet = if cmd.nearest then cmd.tex:nearestSet() else cmd.tex.set
+					local wantSet = if cmd.interp == 1 then cmd.tex:nearestSet() else cmd.tex.set
+					if lastUiMode ~= cmd.interp then
+						lastUiMode = cmd.interp
+						buffer.writeu32(self.modeBuf, 0, cmd.interp)
+						L.vkCmdPushConstants(cb, self.uiLayout, C.SHADER_FRAGMENT, 8, 4, self.modeBuf)
+					end
 					if boundTex ~= wantSet then
 						boundTex = wantSet
 						self.setArr:writeptr(0, wantSet)
@@ -1452,12 +1583,17 @@ function Renderer:endFrame()
 					vk.set(self.clearRect, "VkClearRect", { x = vx0, y = vy0, width = vx1 - vx0, height = vy1 - vy0 })
 					L.vkCmdClearAttachments(cb, 1, self.clearAtt, 1, self.clearRect) -- reset depth inside the view
 					L.vkCmdPushConstants(cb, self.modelLayout, C.SHADER_VERTEX, 0, 96, cmd.pc)
-					self.setArr:writeptr(0, if cmd.nearest then cmd.tex:nearestSet() else cmd.tex.set)
+					self.setArr:writeptr(0, if cmd.interp == 1 then cmd.tex:nearestSet() else cmd.tex.set)
+					buffer.writeu32(self.modeBuf, 0, cmd.interp)
+					L.vkCmdPushConstants(cb, self.modelLayout, C.SHADER_FRAGMENT, 96, 4, self.modeBuf)
 					L.vkCmdBindDescriptorSets(cb, 0, self.modelLayout, 0, 1, self.setArr, 0, nil)
 					self.bufArr:writeptr(0, cmd.model.buf.buffer)
 					self.offArr:writeu64(0, 0)
 					L.vkCmdBindVertexBuffers(cb, 0, 1, self.bufArr, self.offArr)
 					L.vkCmdDraw(cb, cmd.model.vertexCount, 1, 0, 0)
+					if cmd.hl and self.hasStencil then
+						self:_drawHighlight(cb, cmd, mw, mh)
+					end
 					self:_setViewport(cb, 0, 0, W, H)
 				end
 			end
@@ -1508,6 +1644,14 @@ function Renderer:destroy()
 	L.vkDestroyPipeline(dev, self.modelPipelineCull, nil)
 	L.vkDestroyPipeline(dev, self.modelPipelineDither, nil)
 	L.vkDestroyPipeline(dev, self.modelPipelineDitherCull, nil)
+	if self.hasStencil then
+		L.vkDestroyPipeline(dev, self.hlFillPipeline, nil)
+		L.vkDestroyPipeline(dev, self.hlFillPipelineCull, nil)
+		L.vkDestroyPipeline(dev, self.hlFillTopPipeline, nil)
+		L.vkDestroyPipeline(dev, self.hlFillTopPipelineCull, nil)
+		L.vkDestroyPipeline(dev, self.hlOutlinePipeline, nil)
+		L.vkDestroyPipeline(dev, self.hlOutlinePipelineCull, nil)
+	end
 	L.vkDestroyPipelineLayout(dev, self.uiLayout, nil)
 	L.vkDestroyPipelineLayout(dev, self.modelLayout, nil)
 	for _, m in self.mods do
