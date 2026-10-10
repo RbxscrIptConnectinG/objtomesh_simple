@@ -4,7 +4,7 @@ local meshUtils = require("@applibs/mesh/utils")
 return function(
 	objData: string,
 	noInvertUV: boolean?,
-	autoLods: { levels: number, resolution: number }?
+	autoLods: { method: string | "QEM" | "MC", levels: number, resolution: number }?
 ): meshTypes.MeshData
 	local positions: { { number } } = {}
 	local normals: { { number } } = {}
@@ -108,14 +108,14 @@ return function(
 		local allFaces = faces
 		local lodOffsets: { number } = { 0, #allFaces }
 
-		print(`generating lods... [LEVELS: {levels}]`)
+		print(`generating lods... [LEVELS: {levels}] [METHOD: {string.upper(autoLods.method)}]`)
 
 		for level = 1, levels do
 			print(`[LV{level}] generating...`)
 			local calc_div = autoLods.resolution ^ level
 
 			local targetCount = math.max(4, math.floor(baseFaceCount * calc_div))
-			local lodVerts, lodFaces = meshUtils.autoLOD(vertices, faces, targetCount)
+			local lodVerts, lodFaces = meshUtils.autoLOD[string.upper(autoLods.method)](vertices, faces, targetCount)
 
 			local base = #allVerts
 			for _, v in lodVerts do

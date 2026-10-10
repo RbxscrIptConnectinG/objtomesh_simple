@@ -88,6 +88,9 @@ function utils.parseIndex(token: string, count: number): number?
 	return n
 end
 
-utils.autoLOD = require("./autoLOD")
+utils.autoLOD = {
+	QEM = require("./autoLOD/QEM"),
+	MC = require("./autoLOD/MC"),
+}
 
 return utils
