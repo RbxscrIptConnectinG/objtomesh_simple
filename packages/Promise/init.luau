@@ -140,6 +140,7 @@ function Promise.all(list)
 				end
 			end, reject)
 		end
+		return nil
 	end)
 end
 

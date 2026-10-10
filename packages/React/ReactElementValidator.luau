@@ -597,11 +597,7 @@ exports.createElementWithValidation = createElementWithValidation
 -- end
 
 -- ROBLOX deviation START: add strong types based on definitely-typed approach on createElement
-exports.cloneElementWithValidation = function<P, T>(
-	element: ReactElement<P, T>,
-	props: (P & React_ElementProps<T>)?,
-	...: React_Node
-): ReactElement<P, T>
+exports.cloneElementWithValidation = function<P, T>(element: ReactElement<P, T>, props: any, ...: any): ReactElement<P, T>
 	-- ROBLOX deviation END
 	local arguments = { element, props, ... } :: Array<any>
 	local newElement = cloneElement(element, props, ...)

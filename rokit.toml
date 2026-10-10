@@ -5,4 +5,4 @@
 
 [tools]
 zune = "Scythe-Technology/zune@0.5.9"
-luau-lsp = "JohnnyMorganz/luau-lsp@1.69.0"
+luau-lsp = "JohnnyMorganz/luau-lsp@1.70.1"

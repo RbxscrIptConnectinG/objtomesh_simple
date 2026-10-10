@@ -692,6 +692,7 @@ function polyfill.clearTimeout(handle)
 	end
 end
 
-export type Object = typeof(Object)
+export type Object = any
+export type Array<T> = any
 
 return polyfill
