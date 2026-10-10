@@ -1,7 +1,8 @@
 {
     "aliases": {
         "applibs": "./applibs",
-        "libs": "./libs"
+        "libs": "./libs",
+        "pkgs": "./packages"
     },
     "lint": {
         "LocalUnused": false,

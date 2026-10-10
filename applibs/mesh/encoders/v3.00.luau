@@ -1,5 +1,5 @@
 -- fallback
-local sift = require("@libs/luau/sift")
+local sift = require("@pkgs/Sift")
 local V3 = require("./v3.01")
 
 export type options = {}

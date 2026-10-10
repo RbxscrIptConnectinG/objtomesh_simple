@@ -12,7 +12,7 @@ local arguments = process.args
 
 -- oh for fucks sake. it was hell to translate sift package to work w/ zune.
 
-local sift = require("@libs/luau/sift")
+local sift = require("@pkgs/Sift")
 
 local environment = require("@applibs/environment")
 
