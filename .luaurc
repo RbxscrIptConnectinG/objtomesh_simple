@@ -4,6 +4,13 @@
         "libs": "./libs",
         "pkgs": "./packages"
     },
+    "globals": [
+        "describe",
+        "it",
+        "expect",
+        "beforeEach",
+        "afterEach"
+    ],
     "lint": {
         "LocalUnused": false,
         "ImportUnused": false

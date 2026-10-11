@@ -1,7 +1,7 @@
 local meshTypes = require("@applibs/mesh/types")
 local Draco = require("@applibs/draco")
 
-return function(data: string, headerOffset: number): meshTypes.MeshData
+return function(root, data: string, headerOffset: number): meshTypes.MeshData
 	headerOffset -= 1
 	local dataBuffer = buffer.fromstring(data)
 	local size = buffer.len(dataBuffer)

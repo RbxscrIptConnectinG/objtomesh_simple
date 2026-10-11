@@ -1,7 +1,6 @@
 local meshTypes = require("@applibs/mesh/types")
-local meshUtils = require("@applibs/mesh/utils")
 
-return function(data: string, headerOffset: number): meshTypes.MeshData
+return function(root, data: string, headerOffset: number): meshTypes.MeshData
 	local buf = buffer.fromstring(data)
 	local off = headerOffset
 
@@ -18,8 +17,8 @@ return function(data: string, headerOffset: number): meshTypes.MeshData
 
 	local vertices: { meshTypes.Vertex } = table.create(numVerts)
 	for i = 1, numVerts do
-		vertices[i] = meshUtils.readVertex(buf, off)
-		off += meshUtils.VERTEX_SIZE
+		vertices[i] = root.utils.readVertex(buf, off)
+		off += root.utils.VERTEX_SIZE
 	end
 
 	if numBones > 0 then
@@ -28,8 +27,8 @@ return function(data: string, headerOffset: number): meshTypes.MeshData
 
 	local faces: { meshTypes.Face } = table.create(numFaces)
 	for i = 1, numFaces do
-		faces[i] = meshUtils.readFace(buf, off)
-		off += meshUtils.FACE_SIZE
+		faces[i] = root.utils.readFace(buf, off)
+		off += root.utils.FACE_SIZE
 	end
 
 	local lodOffsets: { number } = table.create(numLodOffsets)

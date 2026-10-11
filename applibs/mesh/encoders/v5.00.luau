@@ -1,19 +1,17 @@
 local meshTypes = require("@applibs/mesh/types")
-local meshUtils = require("@applibs/mesh/utils")
-local parseObj = require("@applibs/mesh/parsers/obj")
 
 export type options = {
 	autoLODs: any?,
 }
 
-return function(objData, options: options)
+return function(root, objData, options: options)
 	options = options or {} :: options
 
-	local mesh = parseObj(objData, true, options.autoLODs)
+	local mesh = root.parsers.obj(root, objData, true, options.autoLODs)
 
 	local numVerts = #mesh.vertices
 	local numFaces = #mesh.faces
-	local lodOffsets = meshUtils.resolveLodOffsets(mesh)
+	local lodOffsets = root.utils.resolveLodOffsets(mesh)
 	local numLodOffsets = #lodOffsets
 
 	local headerText = "version 5.00\n"
@@ -21,8 +19,8 @@ return function(objData, options: options)
 
 	local totalSize = #headerText
 		+ headerSize
-		+ numVerts * meshUtils.VERTEX_SIZE
-		+ numFaces * meshUtils.FACE_SIZE
+		+ numVerts * root.utils.VERTEX_SIZE
+		+ numFaces * root.utils.FACE_SIZE
 		+ numLodOffsets * 4
 	local out = buffer.create(totalSize)
 	local pos = 0
@@ -48,13 +46,13 @@ return function(objData, options: options)
 	pos += headerSize
 
 	for _, v in mesh.vertices do
-		meshUtils.writeVertex(out, pos, v)
-		pos += meshUtils.VERTEX_SIZE
+		root.utils.writeVertex(out, pos, v)
+		pos += root.utils.VERTEX_SIZE
 	end
 
 	for _, f in mesh.faces do
-		meshUtils.writeFace(out, pos, f)
-		pos += meshUtils.FACE_SIZE
+		root.utils.writeFace(out, pos, f)
+		pos += root.utils.FACE_SIZE
 	end
 
 	for _, v in lodOffsets do

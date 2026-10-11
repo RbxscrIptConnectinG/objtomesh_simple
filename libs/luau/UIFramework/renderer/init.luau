@@ -21,6 +21,8 @@
 local ffi = zune.ffi
 local vk = require("@self/vk")
 local shaderLoader = require("@self/shader")
+local imageLib = require("./image")
+
 local C = vk.C
 
 local FRAMES = 2
@@ -748,7 +750,7 @@ function Renderer:_createPipeline(
 	blend: boolean,
 	depth: boolean,
 	cullMode: number?,
-	depthStencil
+	depthStencil: { [string]: number }
 ): any
 	local a = vk.arena()
 	local L = self.L
@@ -780,9 +782,7 @@ function Renderer:_createPipeline(
 		frontFace = 0,
 		lineWidth = 1.0, -- frontFace 0 = counter-clockwise
 	}
-
 	depthStencil = depthStencil or {}
-
 	for k, v in depthStencil do -- depthBias* entries of the override table belong to the rasterizer state
 		if string.sub(k, 1, 9) == "depthBias" then
 			rasterFields[k] = v
@@ -1131,15 +1131,25 @@ function Renderer:createTexture(width: number, height: number, rgba: buffer): an
 	return tex
 end
 
--- data: PNG file contents (string or buffer). Needs zune.serde.zlib.
-function Renderer:loadImage(data: string | buffer): any
-	local png = require("./png")
-	local w, h, rgba = png.decode(data)
+-- data: PNG or SVG file contents (string or buffer). PNG needs zune.serde.zlib.
+-- options (SVG only): { width =, height =, scale =, color =, background =, preserveAspectRatio =, bleed = }, see svg.luau
+function Renderer:loadImage(data: string | buffer, options: { [string]: any }?): any
+	local w, h, rgba = imageLib.decode(data, options)
 	return self:createTexture(w, h, rgba)
 end
 
-function Renderer:loadImageFile(path: string): any
-	return self:loadImage(zune.fs.readFile(path, true))
+function Renderer:loadImageFile(path: string, options: { [string]: any }?): any
+	return self:loadImage(zune.fs.readFile(path, true), options)
+end
+
+-- Rasterizes SVG markup into a texture of width x height pixels (omit one for the aspect ratio, both for the intrinsic size).
+function Renderer:loadSvg(markup: string | buffer, width: number?, height: number?, options: { [string]: any }?): any
+	local w, h, rgba = imageLib.libs.svg.rasterize(markup, width, height, options)
+	return self:createTexture(w, h, rgba)
+end
+
+function Renderer:loadSvgFile(path: string, width: number?, height: number?, options: { [string]: any }?): any
+	return self:loadSvg(zune.fs.readFile(path, true), width, height, options)
 end
 
 -- Overwrites a sub-rectangle of an existing texture (RGBA8, tightly packed w*h*4 bytes).

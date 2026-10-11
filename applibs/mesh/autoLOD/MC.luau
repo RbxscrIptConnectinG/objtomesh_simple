@@ -1,5 +1,5 @@
 --!strict
--- midpoint collapse
+-- Midpoint Collapse Method
 local meshTypes = require("@applibs/mesh/types")
 
 -- Binary min-heap of {lenSq, a, b}, ordered by lenSq. O(log n) push/pop.

@@ -22,6 +22,10 @@ export type MeshData = {
 	lodOffsets: {}?,
 }
 
-export type RawCorner = { p: number, t: number?, n: number? }
+export type RawCorner = {
+	p: number,
+	t: number?,
+	n: number?,
+}
 
 return {}

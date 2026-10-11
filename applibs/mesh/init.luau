@@ -1,8 +1,10 @@
-local meshTypes = require("@applibs/mesh/types")
+local meshTypes = require("@self/types")
 local DracoTypes = require("@applibs/draco/types")
 
 local mesh = {}
+mesh.utils = require("@self/utils")
 mesh.parsers = {
+	["obj"] = require("@self/parsers/obj"),
 	["v1.00"] = require("@self/parsers/v1.00"),
 	["v1.01"] = require("@self/parsers/v1.01"),
 	["v2.00"] = require("@self/parsers/v2.00"),
@@ -14,7 +16,7 @@ mesh.parsers = {
 	["v4.01"] = require("@self/parsers/v4.01"),
 
 	["v5.00"] = require("@self/parsers/v5.00"),
-	--v6 = require("@self/parsers/v6"),
+
 	["v7.00"] = require("@self/parsers/v7.00"),
 }
 mesh.encoders = {
@@ -44,30 +46,10 @@ function mesh.decodeMesh(data: string): meshTypes.MeshData
 	local simplified = string.gsub(header, "version ", "v")
 	print(header, simplified)
 	if mesh.parsers[simplified] then
-		return mesh.parsers[simplified](data, contentOffset)
+		return mesh.parsers[simplified](mesh, data, contentOffset)
 	else
 		error(`Unsupported mesh version: "{tostring(header)}"`)
 	end
-
-	--[[	if header == "version 1.00" then
-		return mesh.parsers.v1(data, contentOffset, 0.5)
-	elseif header == "version 1.01" then
-		return mesh.parsers.v1(data, contentOffset, 1.0)
-	elseif header == "version 2.00" then
-		return mesh.parsers.v2(data, contentOffset)
-	elseif header == "version 3.00" or header == "version 3.01" then
-		return mesh.parsers.v3(data, contentOffset)
-	elseif header == "version 4.00" or header == "version 4.01" then
-		return mesh.parsers.v4(data, contentOffset)
-	elseif header == "version 5.00" then
-		return mesh.parsers.v5(data, contentOffset)
-	elseif header == "version 6.00" then
-		return mesh.parsers.v6(data, contentOffset)
-	elseif header == "version 7.00" then
-		return mesh.parsers.v7(data, contentOffset)
-	else
-		error(`Unsupported mesh version: "{tostring(header)}"`)
-	end]]
 end
 
 function mesh.meshToOBJ(mesh: meshTypes.MeshData): string
@@ -93,7 +75,7 @@ function mesh.objToMesh(version: string, objData: string, ...: DracoTypes.Encode
 	if not mesh.encoders[version] then
 		error(`Version "{version}" encoder isn't implemented yet!`)
 	end
-	return mesh.encoders[version](objData, ...)
+	return mesh.encoders[version](mesh, objData, ...)
 end
 
 function mesh.convertMeshToOBJ(data: string): string

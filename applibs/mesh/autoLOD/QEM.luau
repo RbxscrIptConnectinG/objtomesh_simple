@@ -1,5 +1,5 @@
 --!strict
--- Quadric Error Metrics
+-- Quadric Error Metrics Method
 local meshTypes = require("@applibs/mesh/types")
 
 -- Binary min-heap of {cost, a, b}, ordered by cost. O(log n) push/pop.

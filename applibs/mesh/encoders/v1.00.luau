@@ -1,15 +1,13 @@
 local meshTypes = require("@applibs/mesh/types")
-local meshUtils = require("@applibs/mesh/utils")
-local parseObj = require("@applibs/mesh/parsers/obj")
 
 local POSITION_SCALE = 2.0
 
 export type options = {}
 
-return function(objData, options: options)
+return function(root, objData, options: options)
 	options = options or {} :: options
 
-	local mesh = parseObj(objData)
+	local mesh = root.parsers.obj(root, objData)
 	local parts: { string } = { "version 1.00\n", tostring(#mesh.faces), "\n" }
 
 	for _, f in mesh.faces do
@@ -17,11 +15,11 @@ return function(objData, options: options)
 			local v = mesh.vertices[vi]
 			table.insert(
 				parts,
-				`[{meshUtils.fmt(v.vx * POSITION_SCALE)},{meshUtils.fmt(v.vy * POSITION_SCALE)},{meshUtils.fmt(
+				`[{root.utils.fmt(v.vx * POSITION_SCALE)},{root.utils.fmt(v.vy * POSITION_SCALE)},{root.utils.fmt(
 					v.vz * POSITION_SCALE
 				)}]`
-					.. `[{meshUtils.fmt(v.nx)},{meshUtils.fmt(v.ny)},{meshUtils.fmt(v.nz)}]`
-					.. `[{meshUtils.fmt(v.tu)},{meshUtils.fmt(1 - v.tv)},0]`
+					.. `[{root.utils.fmt(v.nx)},{root.utils.fmt(v.ny)},{root.utils.fmt(v.nz)}]`
+					.. `[{root.utils.fmt(v.tu)},{root.utils.fmt(1 - v.tv)},0]`
 			)
 		end
 	end

@@ -1,4 +1,4 @@
-local meshTypes = require("@applibs/mesh/types")
+local meshTypes = require("./types")
 local utils = {}
 utils.VERTEX_SIZE = 40
 utils.FACE_SIZE = 12

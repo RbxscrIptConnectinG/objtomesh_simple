@@ -1,7 +1,6 @@
 local meshTypes = require("@applibs/mesh/types")
-local meshUtils = require("@applibs/mesh/utils")
 
-return function(data: string, headerOffset: number): meshTypes.MeshData
+return function(root, data: string, headerOffset: number): meshTypes.MeshData
 	local buf = buffer.fromstring(data)
 	local off = headerOffset
 
@@ -13,7 +12,7 @@ return function(data: string, headerOffset: number): meshTypes.MeshData
 
 	local vertices: { meshTypes.Vertex } = table.create(numVerts)
 	for i = 1, numVerts do
-		vertices[i] = meshUtils.readVertex(buf, off)
+		vertices[i] = root.utils.readVertex(buf, off)
 		off += vertexSize
 	end
 

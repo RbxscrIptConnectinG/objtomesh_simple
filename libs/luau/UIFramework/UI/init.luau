@@ -21,8 +21,12 @@
 	               child whose ZIndex is lower than its parent's draws behind the parent. Borders and scrollbars are
 	               drawn with their widget, so with Global they can be covered by children that share its ZIndex.
 	  position/size: {x, y} in pixels, or {scaleX, offsetX, scaleY, offsetY}
-	  layout: { direction = "vertical"|"horizontal", gap, padding, stretch, wrap } -> auto-positions children
+	  layout: { direction = "vertical"|"horizontal", gap, padding, stretch, wrap, horizontalAlignment, verticalAlignment } -> auto-positions children
 	          (wrap = true with direction "horizontal" flows children into rows, like a grid)
+	          horizontalAlignment "Left" (default) | "Center" | "Right" and verticalAlignment "Top" (default) | "Center" | "Bottom" place the
+	          children inside the widget's padded area, like UIListLayout in Roblox: along the flow direction the whole run of children moves
+	          (with wrap, every row moves, and the block of rows follows verticalAlignment); across it each child is aligned on its own.
+	          They only matter when there is free space (a fixed-size widget; with autoSize the widget hugs its children).
 	  autoSize ("x" | "y" | "xy" | false, default false; available on EVERY widget): the widget grows to fit its content on
 	          those axes - its children (positions, sizes, layout padding/gap) and its own `text`. `size` on an automatic axis
 	          is the MINIMUM (a widget created with autoSize and no `size` starts at 0). Nested autoSize widgets resolve
@@ -30,7 +34,8 @@
 	          yet), so scale-sized children of an autoSize axis only contribute their offset; `layout.stretch` on an automatic
 	          axis stretches children to the widest/tallest one afterwards. A widget with layout.wrap and autoSize "x"
 	          wraps at its `size` width (no wrapping when that is 0).
-	Button:          hoverColor, pressedColor, disabledColor, disabled, image (texture), onClick/onPress/onRelease/onHover
+	Button:          hoverColor, pressedColor, disabledColor, disabled, image (texture), svg (an SVG icon instead of `image`, see Image),
+	                 onClick/onPress/onRelease/onHover
 	Text:            text, font, textSize (px, default 16), textColor {r,g,b,a}, align ("left"|"center"|"right"),
 	                 valign ("top"|"middle"|"bottom"), wrap, lineHeight (multiplier), textPadding,
 	                 autoSize (see Common props: Text defaults to "xy" when you give no `size`, or "y" with wrap),
@@ -50,6 +55,11 @@
 	                 Ctrl/Cmd+A/C/X/V (system clipboard), Enter, Esc (blur). Mouse: click, drag-select, Shift+click.
 	Image:           texture, fit = "stretch" | "contain" | "cover"; `color` is the tint; imageTransparency (0..1); optional backgroundColor {r,g,b,a} behind
 	                 the picture, faded by `transparency`
+	                 svg = "<svg ...>markup" | "path/to/file.svg" | svg.parse() document: drawn sharp at the widget's pixel size (it is rasterized again,
+	                 after svgDelay seconds, when the widget is resized; fit decides the shape, "stretch" ignores the aspect ratio). Also on Button
+	                 (the icon). svgColor = what `currentColor` means in the file ({r,g,b,a} 0..1 or a CSS colour), svgScale (default 1, e.g. 2 for
+	                 extra sharpness), svgDelay (default 0.12), svgMaxSize (default 2048 px per side), svgBleed (see svg.luau). svg replaces
+	                 `texture` (Image) / `image` (Button); set svg = nil to go back. gui:clearSvgCache() re-reads files. See svg.luau for what is supported.
 	ModelView:       highlight = { fillColor, fillTransparency, outlineColor, outlineTransparency, outlineThickness, depthMode } (real highlight: flat fill over the visible
 	                 surface + silhouette outline, no copied/inverted mesh; see README), transparencyMethod ("blend" default | "dither" dot-pattern, applies to imageTransparency / modelColor alpha), imageTransparency (0..1, fades the rendered model only; `transparency` fades the background only), model, texture, modelColor, yaw, pitch, zoom, fov, autoRotate (rad/s), zoomable,
 	                 doubleSided (default true; false culls back faces - faster, but triangles must wind counter-clockwise)
@@ -64,6 +74,7 @@ local glfw = require("./glfw")
 local Renderer = require("./renderer")
 local fontlib = require("@self/font")
 local textlib = require("@self/text")
+local imagelib = require("./image")
 
 local ui = {}
 
@@ -505,6 +516,119 @@ function Widget:_imageAlpha(): number
 	return 1 - math.clamp(self.imageTransparency or 0, 0, 1)
 end
 
+-- SVG (Image `svg`, Button `svg`): keep a texture rasterized at the widget's current pixel size.
+function Widget:_svgRelease()
+	local tex = self._svgTex
+	if not tex then
+		return
+	end
+	if self.texture == tex then
+		self.texture = nil
+	end
+	if self.image == tex then
+		self.image = nil
+	end
+	self._svgTex, self._svgBase, self._svgSize, self._svgWant = nil, nil, nil, nil
+	tex:destroy()
+end
+
+function Widget:_svgSync(gui: any)
+	local src = self.svg
+	local isImage, isButton = self.kind == "Image", self.kind == "Button"
+	if src == nil or src == false or not (isImage or isButton) then
+		self:_svgRelease()
+		return
+	end
+	local doc = gui:_svgDoc(src)
+	if not doc then
+		return
+	end
+	local dw, dh = doc.width, doc.height
+	local w, h = self.aw, self.ah
+	local tw, th
+	local stretch = false
+	if isImage then
+		if w < 1 or h < 1 then
+			return
+		end
+		if self.fit == "contain" then
+			local k = math.min(w / dw, h / dh)
+			tw, th = dw * k, dh * k
+		elseif self.fit == "cover" then
+			local k = math.max(w / dw, h / dh)
+			tw, th = dw * k, dh * k
+		else
+			tw, th = w, h
+			stretch = true
+		end
+	else
+		local s = math.min(w, h) * (self.imageScale or 0.6)
+		if s < 1 then
+			return
+		end
+		local ta = dw / dh
+		tw, th = s, s
+		if ta > 1 then
+			th = s / ta
+		elseif ta < 1 then
+			tw = s * ta
+		end
+	end
+	local k = self.svgScale or 1
+	tw, th = tw * k, th * k
+	local big = math.max(tw, th)
+	local cap = self.svgMaxSize or 2048
+	if big > cap then
+		tw, th = tw * cap / big, th * cap / big
+	end
+	tw, th = math.max(1, math.floor(tw + 0.5)), math.max(1, math.floor(th + 0.5))
+
+	local colorKey = self.svgColor
+	if type(colorKey) == "table" then
+		colorKey = table.concat(colorKey, ",")
+	end
+	local baseKey = `{gui._svgEpoch or 0}|{tostring(doc)}|{tostring(colorKey)}|{if stretch then "s" else "f"}|{tostring(
+		self.svgBleed
+	)}`
+	local sizeKey = `{tw}x{th}`
+	if baseKey == self._svgBase and sizeKey == self._svgSize then
+		return
+	end
+	if self._svgTex and baseKey == self._svgBase then
+		-- only the size changed: wait until it has settled (a window drag would otherwise rasterize every frame)
+		if self._svgWant ~= sizeKey then
+			self._svgWant = sizeKey
+			self._svgWantTime = gui.time
+		end
+		if gui.time - self._svgWantTime < (self.svgDelay or 0.12) then
+			return
+		end
+	end
+
+	local ok, rw, rh, rgba = pcall(imagelib.libs.svg.render, doc, tw, th, {
+		color = self.svgColor,
+		bleed = self.svgBleed,
+		preserveAspectRatio = if stretch then "none" else nil,
+	})
+	self._svgBase, self._svgSize, self._svgWant = baseKey, sizeKey, nil -- (also after an error, so it is not retried every frame)
+	if not ok then
+		gui:_svgWarn("ui: svg: " .. tostring(rw))
+		return
+	end
+	local tex = gui.renderer:createTexture(rw, rh, rgba)
+	local old = self._svgTex
+	if isImage then
+		self.texture = tex
+	else
+		self.image = tex
+	end
+	self._svgTex = tex
+	gui._svgLive[self] = true
+	if old then
+		old:destroy()
+	end
+end
+
 function Widget:_drawText(r: any)
 	local pad = self.textPadding or 0
 	local innerW, innerH = self.aw - 2 * pad, self.ah - 2 * pad
@@ -883,6 +1007,27 @@ end
 -- Lays out the children inside a W x H box whose origin is (ox, oy) and returns their extent (including layout
 -- padding). With apply = false nothing is written (used to measure autoSize content). autoW/autoH say that the
 -- axis is being measured, so stretch must not use it; limitW is the width at which wrapping rows break.
+-- layout.horizontalAlignment ("Left" | "Center" | "Right") / layout.verticalAlignment ("Top" | "Center" | "Bottom") -> 0 / 0.5 / 1
+local function alignFraction(value: any, horizontal: boolean): number
+	if value == nil then
+		return 0
+	end
+	local key = string.lower(tostring(value))
+	if key == "center" or key == "middle" then
+		return 0.5
+	elseif horizontal and key == "left" or not horizontal and key == "top" then
+		return 0
+	elseif horizontal and key == "right" or not horizontal and key == "bottom" then
+		return 1
+	end
+	error(
+		if horizontal
+			then `ui: layout.horizontalAlignment must be "Left", "Center" or "Right" (got "{tostring(value)}")`
+			else `ui: layout.verticalAlignment must be "Top", "Center" or "Bottom" (got "{tostring(value)}")`,
+		0
+	)
+end
+
 function Widget:_flow(
 	W: number,
 	H: number,
@@ -905,6 +1050,10 @@ function Widget:_flow(
 		local rowH = 0
 		local wrap = cfg.wrap and horizontal
 		local barSpace = if scrolling then BAR_W + 2 else 0
+		local ha = alignFraction(cfg.horizontalAlignment, true)
+		local va = alignFraction(cfg.verticalAlignment, false)
+		local placed = {} -- { c, w, h, x, y, line } in layout order (alignment is applied afterwards)
+		local lines = { { main = 0, cross = 0 } } -- per row (one line unless wrapping): used extent along / across the flow
 		for _, c in self.children do
 			if c.visible then
 				c.gui = self.gui
@@ -918,20 +1067,41 @@ function Widget:_flow(
 				end
 				if wrap and cx > pad and cx + w > limitW - pad - barSpace then
 					cx, cy, rowH = pad, cy + rowH + gap, 0
+					table.insert(lines, { main = 0, cross = 0 })
 				end
 				if cfg.stretch and not wrap and horizontal and not autoH then
 					h = H - 2 * pad
 				end
 				rowH = math.max(rowH, h)
-				if apply then
-					c.aw, c.ah, c.ax, c.ay = w, h, ox + cx, oy + cy
-				end
+				local line = lines[#lines]
+				line.main = math.max(line.main, (if horizontal then cx + w else cy + h) - pad)
+				line.cross = math.max(line.cross, if horizontal then h else w)
+				table.insert(placed, { c, w, h, cx, cy, line })
 				extentX, extentY = math.max(extentX, cx + w), math.max(extentY, cy + h)
 				if horizontal then
 					cx += w + gap
 				else
 					cy += h + gap
 				end
+			end
+		end
+
+		if apply then
+			local innerW, innerH = W - 2 * pad - barSpace, H - 2 * pad
+			-- wrapped rows are aligned as one block too (along the other axis)
+			local blockDY = if wrap then math.max(0, innerH - (extentY - pad)) * va else 0
+			for _, p in placed do
+				local c, w, h, x, y, line = p[1], p[2], p[3], p[4], p[5], p[6]
+				local dx, dy = 0, 0
+				if horizontal then
+					dx = math.max(0, innerW - line.main) * ha
+					dy = math.max(0, (if wrap then line.cross else innerH) - h) * va + blockDY
+				else
+					dy = math.max(0, innerH - line.main) * va
+					dx = math.max(0, innerW - w) * ha
+				end
+				c.aw, c.ah = w, h
+				c.ax, c.ay = ox + x + math.floor(dx + 0.5), oy + y + math.floor(dy + 0.5)
 			end
 		end
 		extentX += pad
@@ -1278,6 +1448,9 @@ function ui.new(window: any, renderer: any): any
 		time = 0,
 		root = create("Frame", { color = { 0, 0, 0, 0 }, ZIndexBehavior = "Sibling" }),
 		text = textlib.new(renderer),
+		_svgDocs = {},
+		_svgLive = {},
+		_svgEpoch = 0,
 	}, GUI)
 	gui.root.gui = gui
 
@@ -1622,6 +1795,61 @@ function GUI:_pick(x: number, y: number): any?
 	return nil
 end
 
+function GUI:_svgWarn(message: string)
+	local out = rawget(_G, "warn") or print
+	out(message)
+end
+
+-- SVG source (markup, file path or parsed document) -> parsed document (cached); nil when it cannot be read
+function GUI:_svgDoc(src: any): any?
+	if type(src) == "table" then
+		return src
+	end
+	if type(src) ~= "string" then
+		return nil
+	end
+	local cache = self._svgDocs
+	local doc = cache[src]
+	if doc == nil then
+		local ok, result = pcall(function()
+			local markup = src
+			if not string.find(src, "<", 1, true) then
+				markup = zune.fs.readFileSync(src)
+			end
+			return imagelib.libs.svg.parse(markup)
+		end)
+		if ok then
+			doc = result
+		else
+			doc = false
+			self:_svgWarn("ui: svg: " .. tostring(result))
+		end
+		cache[src] = doc
+	end
+	return doc or nil
+end
+
+-- Forgets parsed SVG files / markup (so changed files are read again) and redraws every SVG widget.
+function GUI:clearSvgCache()
+	table.clear(self._svgDocs)
+	self._svgEpoch += 1
+end
+
+-- frees the textures of SVG widgets that were removed from the tree or lost their `svg`
+function GUI:_svgSweep()
+	local root = self.root
+	for w in self._svgLive do
+		local cur = w
+		while cur.parent do
+			cur = cur.parent
+		end
+		if cur ~= root or w.svg == nil or w.svg == false then
+			w:_svgRelease()
+			self._svgLive[w] = nil
+		end
+	end
+end
+
 function GUI:update(dt: number)
 	self.dt = dt
 	self.time += dt
@@ -1634,6 +1862,15 @@ function GUI:update(dt: number)
 	root.gui = self
 	root:_layoutChildren()
 	self:_buildOrder()
+
+	local bodies = self._bodies
+	for i = 1, #bodies do
+		local w = bodies[i]
+		if w.svg ~= nil or w._svgTex ~= nil then
+			w:_svgSync(self)
+		end
+	end
+	self:_svgSweep()
 
 	local hovered = self:_pick(self.mx, self.my)
 	if hovered ~= self.hovered then

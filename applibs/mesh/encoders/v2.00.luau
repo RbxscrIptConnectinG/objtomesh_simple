@@ -1,20 +1,18 @@
 local meshTypes = require("@applibs/mesh/types")
-local meshUtils = require("@applibs/mesh/utils")
-local parseObj = require("@applibs/mesh/parsers/obj")
 
 export type options = {}
 
-return function(objData, options: options)
+return function(root, objData, options: options)
 	options = options or {} :: options
 
-	local mesh = parseObj(objData)
+	local mesh = root.parsers.obj(root, objData)
 
 	local numVerts = #mesh.vertices
 	local numFaces = #mesh.faces
 	local headerText = "version 2.00\n"
 	local headerSize = 12
 
-	local totalSize = #headerText + headerSize + numVerts * meshUtils.VERTEX_SIZE + numFaces * meshUtils.FACE_SIZE
+	local totalSize = #headerText + headerSize + numVerts * root.utils.VERTEX_SIZE + numFaces * root.utils.FACE_SIZE
 	local out = buffer.create(totalSize)
 	local pos = 0
 
@@ -22,15 +20,15 @@ return function(objData, options: options)
 	pos += #headerText
 
 	buffer.writeu16(out, pos, headerSize)
-	buffer.writeu8(out, pos + 2, meshUtils.VERTEX_SIZE)
+	buffer.writeu8(out, pos + 2, root.utils.VERTEX_SIZE)
 	buffer.writeu8(out, pos + 3, 12)
 	buffer.writeu32(out, pos + 4, numVerts)
 	buffer.writeu32(out, pos + 8, numFaces)
 	pos += headerSize
 
 	for _, v in mesh.vertices do
-		meshUtils.writeVertex(out, pos, v)
-		pos += meshUtils.VERTEX_SIZE
+		root.utils.writeVertex(out, pos, v)
+		pos += root.utils.VERTEX_SIZE
 	end
 
 	for _, f in mesh.faces do

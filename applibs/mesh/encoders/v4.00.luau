@@ -6,10 +6,11 @@ export type options = {
 	autoLODs: any?,
 }
 
-return function(objData, options: options)
+return function(root, objData, options: options)
 	options = options or {} :: options
 
 	return V4(
+		root,
 		objData,
 		sift.Dictionary.join(options, {
 			__forceVer = "4.00",

@@ -2,7 +2,7 @@ local meshTypes = require("@applibs/mesh/types")
 
 local POSITION_SCALE = 0.5
 
-return function(data: string, headerOffset: number): meshTypes.MeshData
+return function(root, data: string, headerOffset: number): meshTypes.MeshData
 	local nl = data:find("\n", headerOffset + 1, true)
 
 	local numFacesLine = data:sub(headerOffset + 1, nl - 1)

@@ -1,7 +1,7 @@
 local meshTypes = require("@applibs/mesh/types")
-local meshUtils = require("@applibs/mesh/utils")
 
 return function(
+	root,
 	objData: string,
 	noInvertUV: boolean?,
 	autoLods: { method: string | "QEM" | "MC", levels: number, resolution: number }?
@@ -39,9 +39,9 @@ return function(
 				for i = 2, #tokens do
 					local p, t, n = tokens[i]:match("^(-?%d*)/?(-?%d*)/?(-?%d*)$")
 					table.insert(corners, {
-						p = meshUtils.parseIndex(p :: string, #positions) :: number,
-						t = meshUtils.parseIndex(t :: string, #uvs),
-						n = meshUtils.parseIndex(n :: string, #normals),
+						p = root.utils.parseIndex(p :: string, #positions) :: number,
+						t = root.utils.parseIndex(t :: string, #uvs),
+						n = root.utils.parseIndex(n :: string, #normals),
 					})
 				end
 				-- Fan-triangulate polygons with more than 3 vertices.
@@ -115,7 +115,7 @@ return function(
 			local calc_div = autoLods.resolution ^ level
 
 			local targetCount = math.max(4, math.floor(baseFaceCount * calc_div))
-			local lodVerts, lodFaces = meshUtils.autoLOD[string.upper(autoLods.method)](vertices, faces, targetCount)
+			local lodVerts, lodFaces = root.utils.autoLOD[string.upper(autoLods.method)](vertices, faces, targetCount)
 
 			local base = #allVerts
 			for _, v in lodVerts do
