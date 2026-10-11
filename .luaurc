@@ -2,7 +2,8 @@
     "aliases": {
         "applibs": "./applibs",
         "libs": "./libs",
-        "pkgs": "./packages"
+        "pkgs": "./packages",
+        "toMesh": "./src/new_branch"
     },
     "globals": [
         "describe",

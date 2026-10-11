@@ -11,7 +11,7 @@ local win_popups = require("@libs/luau/WinLibs/popup")
 local e = react.createElement
 
 local components = {
-	intro = require("../components/intro"),
+	intro = require("@toMesh/components/intro"),
 }
 
 local UI = {}
@@ -56,9 +56,10 @@ function UI:getRender()
 	local clickCount = 0
 	return e("Frame", {
 		size = { 1, 0, 1, 0 },
-		color = { 0.08, 0.09, 0.11, 1 },
+		color = { 0.08, 0.09, 0.11, 0 },
 		anchor = { 0.5, 0.5 },
 		position = { 0.5, 0, 0.5, 0 },
+		backgroundTransparency = 0,
 	}, {
 		button = e("Button", {
 			onClick = function()
@@ -75,7 +76,9 @@ function UI:getRender()
 end
 
 function UI:run()
-	reactVkui.run(self.app, self.children)
+	reactVkui.run(self.app, self.children, {
+		step = function(dt) end,
+	})
 	self.app:destroy()
 end
 

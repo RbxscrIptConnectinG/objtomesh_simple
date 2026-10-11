@@ -15,12 +15,15 @@ return function(props: props, state: state)
 	local selected = reactReflex.useSelector(function(state)
 		return state
 	end)
-
+	if selected >= 1 then
+		return nil
+	end
 	return e("Frame", {
-		size = { 1, 0, 1, 0 },
-		color = { 0.08, 0.09, 0.11, 1 },
+		size = { 0.8, 0, 0.8, 0 },
+		color = { 0, 0, 0, 1 },
 		anchor = { 0.5, 0.5 },
 		position = { 0.5, 0, 0.5, 0 },
+		transparency = 1,
 		layout = {
 			direction = "horizontal",
 			gap = 0,
@@ -53,7 +56,7 @@ return function(props: props, state: state)
 			imageTransparency = selected,
 		}),
 		--[[GLFW = e("Image", {
-			texture = renderer:loadImage(fs.readFileSync("./assets/toMesh/images/icons/trademarks/glfw.png")),
+			texture = fs.readFileSync("./assets/toMesh/images/icons/trademarks/glfw.png"),
 			antiAlias = "Grayscale",
 			interpolation = "Linear",
 			fit = "contain",

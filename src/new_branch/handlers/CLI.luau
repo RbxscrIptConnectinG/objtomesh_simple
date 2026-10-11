@@ -1,4 +1,4 @@
-local types = require("../types")
+local types = require("@toMesh/types")
 local sift = require("@pkgs/Sift")
 return function(app: types.App, arguments)
 	if #arguments > 0 then
