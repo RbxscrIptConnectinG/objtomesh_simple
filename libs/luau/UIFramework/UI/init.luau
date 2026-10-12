@@ -53,7 +53,8 @@
 	                 Methods: focus(), blur(), isFocused(), setText(str) (silent), selectAll().
 	                 Keys: arrows (+Shift selects, +Ctrl/Alt moves by word), Home/End (+Ctrl = whole text), Backspace/Delete,
 	                 Ctrl/Cmd+A/C/X/V (system clipboard), Enter, Esc (blur). Mouse: click, drag-select, Shift+click.
-	Image:           texture, fit = "stretch" | "contain" | "cover"; `color` is the tint; imageTransparency (0..1); optional backgroundColor {r,g,b,a} behind
+	Image:           texture (a Texture, or the path of a PNG / SVG file - loaded for you and cached; the same for Button `image`,
+	                 ModelView `texture` and ImageSelector items), fit = "stretch" | "contain" | "cover"; `color` is the tint; imageTransparency (0..1); optional backgroundColor {r,g,b,a} behind
 	                 the picture, faded by `transparency`
 	                 svg = "<svg ...>markup" | "path/to/file.svg" | svg.parse() document: drawn sharp at the widget's pixel size (it is rasterized again,
 	                 after svgDelay seconds, when the widget is resized; fit decides the shape, "stretch" ignores the aspect ratio). Also on Button
@@ -248,7 +249,9 @@ function Widget:setItems(items: { any })
 	self.selected = nil
 	local size = self.thumbSize
 	for i, raw in items do
-		local item = if raw.texture == nil and raw.width ~= nil then { texture = raw } else raw
+		local item = if type(raw) == "string" or (raw.texture == nil and raw.width ~= nil)
+			then { texture = raw }
+			else raw
 		self.items[i] = item
 		self:add(create("Button", {
 			size = { size, size },
@@ -516,26 +519,58 @@ function Widget:_imageAlpha(): number
 	return 1 - math.clamp(self.imageTransparency or 0, 0, 1)
 end
 
+-- A texture value may be a Texture, or a file path (PNG / SVG) / SVG markup that is loaded for you.
+local function looksSvg(s: string): boolean
+	return string.find(s, "<", 1, true) ~= nil or string.find(string.lower(s), "%.svg$") ~= nil
+end
+
+-- the SVG a widget shows: its `svg` prop, or an SVG path / markup given as `texture` (Image) / `image` (Button)
+function Widget:_svgSource(): any?
+	local src = self.svg
+	if src ~= nil and src ~= false then
+		return src
+	end
+	local v
+	if self.kind == "Image" then
+		v = self.texture
+	elseif self.kind == "Button" then
+		v = self.image
+	end
+	if type(v) == "string" and looksSvg(v) then
+		return v
+	end
+	return nil
+end
+
+-- Texture object for a texture-like prop value (nil while it is unavailable)
+function Widget:_resolveTex(value: any): any?
+	if type(value) ~= "string" then
+		return value
+	end
+	if (self.kind == "Image" or self.kind == "Button") and looksSvg(value) then
+		return nil -- drawn by the SVG path (rasterized at the widget's size)
+	end
+	local gui = self.gui
+	if not gui then
+		return nil
+	end
+	return gui:_pathTexture(value)
+end
+
 -- SVG (Image `svg`, Button `svg`): keep a texture rasterized at the widget's current pixel size.
 function Widget:_svgRelease()
 	local tex = self._svgTex
 	if not tex then
 		return
 	end
-	if self.texture == tex then
-		self.texture = nil
-	end
-	if self.image == tex then
-		self.image = nil
-	end
 	self._svgTex, self._svgBase, self._svgSize, self._svgWant = nil, nil, nil, nil
 	tex:destroy()
 end
 
 function Widget:_svgSync(gui: any)
-	local src = self.svg
+	local src = self:_svgSource()
 	local isImage, isButton = self.kind == "Image", self.kind == "Button"
-	if src == nil or src == false or not (isImage or isButton) then
+	if src == nil or not (isImage or isButton) then
 		self:_svgRelease()
 		return
 	end
@@ -617,11 +652,6 @@ function Widget:_svgSync(gui: any)
 	end
 	local tex = gui.renderer:createTexture(rw, rh, rgba)
 	local old = self._svgTex
-	if isImage then
-		self.texture = tex
-	else
-		self.image = tex
-	end
 	self._svgTex = tex
 	gui._svgLive[self] = true
 	if old then
@@ -1294,7 +1324,7 @@ function Widget:_drawBody(r: any, dt: number)
 		if bg then
 			r:quad(x, y, w, h, bg[1], bg[2], bg[3], (bg[4] or 1) * self:_alpha())
 		end
-		local tex = self.texture
+		local tex = self._svgTex or self:_resolveTex(self.texture)
 		if tex then
 			local qx, qy, qw, qh, u0, v0, u1, v1 = x, y, w, h, 0, 0, 1, 1
 			local ta, ba = tex.width / tex.height, w / math.max(h, 1)
@@ -1345,10 +1375,11 @@ function Widget:_drawBody(r: any, dt: number)
 		r:quad(x, y, w, h, col[1], col[2], col[3], col[4] * self:_alpha())
 	end
 
-	if self.kind == "Button" and self.image then
+	local icon = if self.kind == "Button" then (self._svgTex or self:_resolveTex(self.image)) else nil
+	if icon then
 		local s = math.min(w, h) * (self.imageScale or 0.6)
 		local iw, ih = s, s
-		local ta = self.image.width / self.image.height
+		local ta = icon.width / icon.height
 		if ta > 1 then
 			ih = s / ta
 		elseif ta < 1 then
@@ -1364,7 +1395,7 @@ function Widget:_drawBody(r: any, dt: number)
 			t[2],
 			t[3],
 			t[4],
-			self.image,
+			icon,
 			nil,
 			nil,
 			nil,
@@ -1388,7 +1419,7 @@ function Widget:_drawBody(r: any, dt: number)
 			mvp,
 			light,
 			{ mc[1], mc[2], mc[3], (mc[4] or 1) * self:_imageAlpha() },
-			self.texture,
+			self:_resolveTex(self.texture),
 			self.doubleSided,
 			self:_interp(),
 			self.transparencyMethod,
@@ -1451,6 +1482,7 @@ function ui.new(window: any, renderer: any): any
 		_svgDocs = {},
 		_svgLive = {},
 		_svgEpoch = 0,
+		_textures = {},
 	}, GUI)
 	gui.root.gui = gui
 
@@ -1795,6 +1827,38 @@ function GUI:_pick(x: number, y: number): any?
 	return nil
 end
 
+-- Loads (once) the PNG / SVG file at `path` as a texture; false after a failure (reported once)
+function GUI:_pathTexture(path: string): any?
+	local cache = self._textures
+	local tex = cache[path]
+	if tex == nil then
+		local ok, result = pcall(function()
+			if string.find(path, "<", 1, true) then
+				return self.renderer:loadImage(path) -- SVG markup
+			end
+			return self.renderer:loadImage(zune.fs.readFileSync(path, true))
+		end)
+		if ok then
+			tex = result
+		else
+			tex = false
+			self:_svgWarn(`ui: could not load image "{path}": {tostring(result)}`)
+		end
+		cache[path] = tex
+	end
+	return tex or nil
+end
+
+-- Destroys the textures loaded from file paths so the files are read again the next time they are used.
+function GUI:clearImageCache()
+	for path, tex in self._textures do
+		if tex then
+			tex:destroy()
+		end
+		self._textures[path] = nil
+	end
+end
+
 function GUI:_svgWarn(message: string)
 	local out = rawget(_G, "warn") or print
 	out(message)
@@ -1843,7 +1907,7 @@ function GUI:_svgSweep()
 		while cur.parent do
 			cur = cur.parent
 		end
-		if cur ~= root or w.svg == nil or w.svg == false then
+		if cur ~= root or w:_svgSource() == nil then
 			w:_svgRelease()
 			self._svgLive[w] = nil
 		end
@@ -1866,7 +1930,7 @@ function GUI:update(dt: number)
 	local bodies = self._bodies
 	for i = 1, #bodies do
 		local w = bodies[i]
-		if w.svg ~= nil or w._svgTex ~= nil then
+		if w._svgTex ~= nil or w.svg ~= nil or type(w.texture) == "string" or type(w.image) == "string" then
 			w:_svgSync(self)
 		end
 	end
@@ -1947,20 +2011,28 @@ function ui.createApp(opts: AppOptions?): any
 		glfw.terminate()
 		error(renderer, 0)
 	end
-	local gui = ui.new(window, renderer)
+	local fake_renderer = setmetatable({}, {
+		__index = function(tbl, key)
+			if key == "UIFW" then
+				return ui
+			end
+			return renderer[key]
+		end,
+	})
+	local gui = ui.new(window, fake_renderer)
 	if o.ZIndexBehavior then
 		gui.root.ZIndexBehavior = o.ZIndexBehavior
 	end
 	if o.font then
 		local okFont, fontErr = pcall(gui.setDefaultFont, gui, o.font)
 		if not okFont then
-			renderer:destroy()
+			fake_renderer:destroy()
 			window:destroy()
 			glfw.terminate()
 			error(fontErr, 0)
 		end
 	end
-	return setmetatable({ glfw = glfw, window = window, renderer = renderer, gui = gui, root = gui.root }, App)
+	return setmetatable({ glfw = glfw, window = window, renderer = fake_renderer, gui = gui, root = gui.root }, App)
 end
 
 -- step(dt) runs once per frame before the UI is laid out; use it to mutate widgets.

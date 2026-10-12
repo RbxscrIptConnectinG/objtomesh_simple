@@ -694,5 +694,6 @@ end
 
 export type Object = any
 export type Array<T> = any
+export type Set<T> = any
 
 return polyfill

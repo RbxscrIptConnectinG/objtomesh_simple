@@ -7,6 +7,7 @@ M.ReactVkui = ReactVkui
 
 -- Renders `element` into an app (its root widget) or into any widget. Concurrent root by default: the work runs while the
 -- app loop yields to Zune's scheduler. { legacy = true } renders synchronously instead (the UI exists right after mount()).
+
 function M.mount(target: any, element: any, options: { legacy: boolean? }?): any
 	local container = if target.root ~= nil then target.root else target
 	local root = if options and options.legacy

@@ -19,8 +19,6 @@ local ReactSymbols = Shared.ReactSymbols
 local React = require("@pkgs/React")
 local None = require("@pkgs/LuauPolyfill").Object.None
 
-local ui = require("@libs/luau/UIFramework/UI")
-
 local exports = {}
 
 local instanceToBindings = setmetatable({}, { __mode = "k" })
@@ -35,19 +33,6 @@ end
 exports.isTextChild = isTextChild
 
 -- one untouched widget per kind, used to find the default value of a prop that was removed
-local pristine = {}
-local function defaultOf(kind: string, key: string)
-	local p = pristine[kind]
-	if p == nil then
-		p = ui[kind]({})
-		pristine[kind] = p
-	end
-	local v = rawget(p, key)
-	if type(v) == "table" then
-		return table.clone(v)
-	end
-	return v
-end
 
 local function describe(kind: string, key: any): string
 	return `<{kind}> prop "{tostring(key)}"`
@@ -67,8 +52,6 @@ local function setProp(widget, kind: string, key: string, value: any)
 		widget:setItems(value or {})
 	elseif kind == "ImageSelector" and key == "selected" then
 		widget:select(value)
-	elseif value == nil then
-		widget[key] = defaultOf(kind, key)
 	else
 		widget[key] = value
 	end
@@ -127,9 +110,10 @@ local function splitProps(kind: string, props)
 end
 
 -- creates the widget; bindings are returned so the host config can attach them once the widget is complete
-function exports.create(kind: string, props)
+function exports.create(UIFW, kind: string, props)
 	local clean, bindings = splitProps(kind, props)
-	local ok, widget = pcall(ui[kind], clean)
+
+	local ok, widget = pcall(UIFW[kind], clean)
 	if not ok then
 		error(`ReactVkui: could not create <{kind}>: {tostring(widget)}`, 0)
 	end

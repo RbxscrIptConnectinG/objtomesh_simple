@@ -24,5 +24,5 @@ app.handlers = {}
 app.handlers.CLI = require("@self/handlers/CLI")
 --local result = app.handlers.CLI(app, process.args)
 
-app.handlers.UI = require("@self/handlers/UI").new()
+app.handlers.UI = require("@self/handlers/UI").new(app)
 app.handlers.UI:run()

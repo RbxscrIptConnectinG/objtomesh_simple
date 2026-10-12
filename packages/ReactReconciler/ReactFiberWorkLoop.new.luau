@@ -211,7 +211,7 @@ local invokeLayoutEffectUnmountInDEV = ReactFiberCommitWork.invokeLayoutEffectUn
 local invokePassiveEffectUnmountInDEV = ReactFiberCommitWork.invokePassiveEffectUnmountInDEV
 local recursivelyCommitLayoutEffects = ReactFiberCommitWork.recursivelyCommitLayoutEffects
 
-local Promise = require("@pkgs/Promise")
+local Promise = require("@pkgs/ReactPromise")
 
 local enqueueUpdate = require("./ReactUpdateQueue.new").enqueueUpdate
 

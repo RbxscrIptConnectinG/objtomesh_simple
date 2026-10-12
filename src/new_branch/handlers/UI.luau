@@ -8,6 +8,8 @@ local reactReflex = require("@pkgs/ReactReflex")
 
 local win_popups = require("@libs/luau/WinLibs/popup")
 
+local types = require("@toMesh/types")
+
 local e = react.createElement
 
 local components = {
@@ -17,8 +19,9 @@ local components = {
 local UI = {}
 UI.__index = UI
 
-function UI.new(root)
+function UI.new(root: types.App)
 	local self = setmetatable({}, UI)
+	self.root = root
 
 	if fs.stat("C:/Windows/System32/vulkan-1.dll").kind == "none" then
 		win_popups.alert(
@@ -42,8 +45,9 @@ function UI.new(root)
 			shaders = "./assets/toMesh/bin/shaders",
 		},
 		vsync = true,
-		font = "./assets/toMesh/fonts/cour/Courier New.ttf",
+		font = "./assets/toMesh/fonts/Inconsolata/Inconsolata-VariableFont_wdth,wght.ttf",
 	})
+
 	self.producers = {
 		intro = require("../producers/intro"),
 	}
@@ -53,7 +57,6 @@ function UI.new(root)
 end
 
 function UI:getRender()
-	local clickCount = 0
 	return e("Frame", {
 		size = { 1, 0, 1, 0 },
 		color = { 0.08, 0.09, 0.11, 0 },
@@ -63,13 +66,33 @@ function UI:getRender()
 	}, {
 		button = e("Button", {
 			onClick = function()
-				clickCount += 0.1
-				self.producers.intro.transparency.set(clickCount)
+				self.producers.intro.transparency.add(0.1)
+			end,
+		}),
+		buttonplus = e("Button", {
+			anchor = { 1, 0 },
+			position = { 1, 0, 0, 0 },
+			onClick = function()
+				self.producers.intro.transparency.remove(0.1)
 			end,
 		}),
 		e(reactReflex.ReflexProvider, {
 			producer = self.producers.intro.transparency,
 		}, {
+			indicator = e(function(props)
+				local producer = reactReflex.useProducer()
+				local selected = reactReflex.useSelector(function(state)
+					return state
+				end)
+
+				return e("Text", {
+					anchor = { 0, 1 },
+					position = { 0, 0, 1, 0 },
+					size = { 0, 300, 0, 0 },
+					autoSize = "y",
+					text = `transparency: {string.format("%.3f", selected)}`,
+				})
+			end),
 			intro = e(components.intro, {}),
 		}),
 	})
