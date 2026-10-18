@@ -76,47 +76,16 @@ local Hint = {
 local OPENGL_CORE_PROFILE = 0x00032001
 
 local Key: { [string]: number } = {
-	Space = 32,
-	Apostrophe = 39,
-	Comma = 44,
-	Minus = 45,
-	Period = 46,
-	Slash = 47,
-	Semicolon = 59,
-	Equal = 61,
-	LeftBracket = 91,
-	Backslash = 92,
-	RightBracket = 93,
-	GraveAccent = 96,
-	Escape = 256,
-	Enter = 257,
-	Tab = 258,
-	Backspace = 259,
-	Insert = 260,
-	Delete = 261,
-	Right = 262,
-	Left = 263,
-	Down = 264,
-	Up = 265,
-	PageUp = 266,
-	PageDown = 267,
-	Home = 268,
-	End = 269,
-	CapsLock = 280,
-	ScrollLock = 281,
-	NumLock = 282,
-	PrintScreen = 283,
-	Pause = 284,
+	Space = 32, Apostrophe = 39, Comma = 44, Minus = 45, Period = 46, Slash = 47,
+	Semicolon = 59, Equal = 61,
+	LeftBracket = 91, Backslash = 92, RightBracket = 93, GraveAccent = 96,
+	Escape = 256, Enter = 257, Tab = 258, Backspace = 259, Insert = 260, Delete = 261,
+	Right = 262, Left = 263, Down = 264, Up = 265,
+	PageUp = 266, PageDown = 267, Home = 268, End = 269,
+	CapsLock = 280, ScrollLock = 281, NumLock = 282, PrintScreen = 283, Pause = 284,
 	KeypadEnter = 335,
-	LeftShift = 340,
-	LeftControl = 341,
-	LeftAlt = 342,
-	LeftSuper = 343,
-	RightShift = 344,
-	RightControl = 345,
-	RightAlt = 346,
-	RightSuper = 347,
-	Menu = 348,
+	LeftShift = 340, LeftControl = 341, LeftAlt = 342, LeftSuper = 343,
+	RightShift = 344, RightControl = 345, RightAlt = 346, RightSuper = 347, Menu = 348,
 }
 for c = 65, 90 do -- Key.A .. Key.Z
 	Key[string.char(c)] = c
@@ -737,9 +706,6 @@ function glfw.run(window: any, step: (dt: number, window: any) -> (), opts: { yi
 	end
 end
 
-export type Window = typeof(setmetatable(
-	{} :: { handle: any, _callbacks: { [string]: any }, _destroyed: boolean },
-	Window
-))
+export type Window = typeof(setmetatable({} :: { handle: any, _callbacks: { [string]: any }, _destroyed: boolean }, Window))
 
 return glfw

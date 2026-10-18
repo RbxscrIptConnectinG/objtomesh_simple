@@ -9,6 +9,7 @@ layout(push_constant) uniform PC {
 } pc;
 layout(location = 0) out vec4 vColor;
 layout(location = 1) out vec2 vUV;
+invariant gl_Position; // same result as highlight.vert (the highlight fill pass depends on equal depth)
 void main() {
     gl_Position = pc.c0 * inPos.x + pc.c1 * inPos.y + pc.c2 * inPos.z + pc.c3;
     float intensity = 0.65 + 0.35 * dot(inNormal, pc.light);

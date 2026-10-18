@@ -21,8 +21,7 @@
 local ffi = zune.ffi
 local vk = require("@self/vk")
 local shaderLoader = require("@self/shader")
-local imageLib = require("./image")
-
+local imagelib = require("./image")
 local C = vk.C
 
 local FRAMES = 2
@@ -36,7 +35,7 @@ export type Options = {
 	appName: string?,
 	clearColor: { number }?, -- {r, g, b, a}
 	maxVertices: number?, -- per-frame UI vertex capacity (default 65536 = ~10k quads)
-	shaders: any?, -- "folder" (default: "shaders" beside renderer.luau) | { uiVert/uiFrag/modelVert/modelFrag/modelFragDither = "file.vert|.frag|.spv" | SPIR-V buffer } | { libraryPath = shaderc library path, shaders = either of the former }
+	shaders: any?, -- "folder" (default: "shaders" beside renderer.luau) | { uiVert/uiFrag/modelVert/modelFrag/modelFragDither/uiFragDither = "file.vert|.frag|.spv" | SPIR-V buffer } | { libraryPath = shaderc library path, shaders = either of the former }
 }
 
 local Renderer = {}
@@ -750,7 +749,7 @@ function Renderer:_createPipeline(
 	blend: boolean,
 	depth: boolean,
 	cullMode: number?,
-	depthStencil: { [string]: number }
+	depthStencil
 ): any
 	local a = vk.arena()
 	local L = self.L
@@ -782,8 +781,7 @@ function Renderer:_createPipeline(
 		frontFace = 0,
 		lineWidth = 1.0, -- frontFace 0 = counter-clockwise
 	}
-	depthStencil = depthStencil or {}
-	for k, v in depthStencil do -- depthBias* entries of the override table belong to the rasterizer state
+	for k, v in depthStencil or {} do -- depthBias* entries of the override table belong to the rasterizer state
 		if string.sub(k, 1, 9) == "depthBias" then
 			rasterFields[k] = v
 		end
@@ -801,7 +799,7 @@ function Renderer:_createPipeline(
 		depthCompareOp = 1,
 		maxDepthBounds = 1.0,
 	}
-	for k, v in depthStencil do -- overrides: depth compare op, stencil state (f0..f6 = front, b0..b6 = back)
+	for k, v in depthStencil or {} do -- overrides: depth compare op, stencil state (f0..f6 = front, b0..b6 = back)
 		if string.sub(k, 1, 9) ~= "depthBias" then
 			dsFields[k] = v
 		end
@@ -862,6 +860,7 @@ local SHADER_FILES = {
 	modelVert = "vert/model.vert",
 	modelFrag = "frag/model.frag",
 	modelFragDither = "frag/model_dither.frag",
+	uiFragDither = "frag/ui_dither.frag",
 	highlightVert = "vert/highlight.vert",
 	highlightFrag = "frag/highlight.frag",
 }
@@ -901,6 +900,7 @@ function Renderer:_createPipelines(overrides: any)
 		modelVert = self:_shaderModule(code("modelVert")),
 		modelFrag = self:_shaderModule(code("modelFrag")),
 		modelFragDither = self:_shaderModule(code("modelFragDither")),
+		uiFragDither = self:_shaderModule(code("uiFragDither")),
 		highlightVert = self:_shaderModule(code("highlightVert")),
 		highlightFrag = self:_shaderModule(code("highlightFrag")),
 	}
@@ -937,6 +937,12 @@ function Renderer:_createPipelines(overrides: any)
 		{ location = 1, binding = 0, format = C.FORMAT_R32G32_SFLOAT, offset = 8 },
 		{ location = 2, binding = 0, format = C.FORMAT_R8G8B8A8_UNORM, offset = 16 },
 	}, true, false)
+	-- dot-pattern variant for 2D quads (setQuadMethod("dither")): ordered dither with discard, no blending
+	self.uiPipelineDither = self:_createPipeline(self.mods.uiVert, self.mods.uiFragDither, self.uiLayout, UI_STRIDE, {
+		{ location = 0, binding = 0, format = C.FORMAT_R32G32_SFLOAT, offset = 0 },
+		{ location = 1, binding = 0, format = C.FORMAT_R32G32_SFLOAT, offset = 8 },
+		{ location = 2, binding = 0, format = C.FORMAT_R8G8B8A8_UNORM, offset = 16 },
+	}, false, false)
 	local modelAttrs = {
 		{ location = 0, binding = 0, format = C.FORMAT_R32G32B32_SFLOAT, offset = 0 },
 		{ location = 1, binding = 0, format = C.FORMAT_R32G32B32_SFLOAT, offset = 12 },
@@ -1134,7 +1140,8 @@ end
 -- data: PNG or SVG file contents (string or buffer). PNG needs zune.serde.zlib.
 -- options (SVG only): { width =, height =, scale =, color =, background =, preserveAspectRatio =, bleed = }, see svg.luau
 function Renderer:loadImage(data: string | buffer, options: { [string]: any }?): any
-	local w, h, rgba = imageLib.decode(data, options)
+	local image = require("./image")
+	local w, h, rgba = image.decode(data, options)
 	return self:createTexture(w, h, rgba)
 end
 
@@ -1144,7 +1151,7 @@ end
 
 -- Rasterizes SVG markup into a texture of width x height pixels (omit one for the aspect ratio, both for the intrinsic size).
 function Renderer:loadSvg(markup: string | buffer, width: number?, height: number?, options: { [string]: any }?): any
-	local w, h, rgba = imageLib.libs.svg.rasterize(markup, width, height, options)
+	local w, h, rgba = imagelib.libs.svg.rasterize(markup, width, height, options)
 	return self:createTexture(w, h, rgba)
 end
 
@@ -1301,6 +1308,7 @@ function Renderer:beginFrame(): boolean
 
 	self.imageIndex = self.idxOut:readu32(0)
 	self.vcount, self.cur = 0, nil
+	self.dither = false
 	table.clear(self.cmds)
 	table.clear(self.clipStack)
 	self.clip = { 0, 0, self.width, self.height }
@@ -1326,6 +1334,12 @@ function Renderer:popClip()
 	self.clip = table.remove(self.clipStack) or { 0, 0, self.width, self.height }
 end
 
+-- How the quads drawn from now on handle alpha: "blend" (default, alpha blending) | "dither" (4x4 dot pattern, alpha picks how many
+-- dots are drawn; no blending). Reset to "blend" at the start of every frame; set it back after drawing.
+function Renderer:setQuadMethod(method: string?)
+	self.dither = (method == "dither")
+end
+
 function Renderer:quad(
 	x: number,
 	y: number,
@@ -1348,8 +1362,17 @@ function Renderer:quad(
 	tex = tex or self.white
 	local cur = self.cur
 	interp = interp or 0
-	if not cur or cur.tex ~= tex or cur.clip ~= self.clip or cur.interp ~= interp then
-		cur = { kind = "quads", tex = tex, interp = interp, clip = self.clip, first = self.vcount, count = 0 }
+	local dither = self.dither == true
+	if not cur or cur.tex ~= tex or cur.clip ~= self.clip or cur.interp ~= interp or cur.dither ~= dither then
+		cur = {
+			kind = "quads",
+			tex = tex,
+			interp = interp,
+			dither = dither,
+			clip = self.clip,
+			first = self.vcount,
+			count = 0,
+		}
 		table.insert(self.cmds, cur)
 		self.cur = cur
 	end
@@ -1544,12 +1567,13 @@ function Renderer:endFrame()
 	local boundTex: any = nil
 	local lastUiMode: number? = nil
 
-	local function useUI()
-		if bound == "ui" then
+	local function useUI(dither: boolean)
+		local key = if dither then "uiDither" else "ui"
+		if bound == key then
 			return
 		end
-		bound, boundTex, lastUiMode = "ui", nil, nil
-		L.vkCmdBindPipeline(cb, 0, self.uiPipeline)
+		bound, boundTex, lastUiMode = key, nil, nil
+		L.vkCmdBindPipeline(cb, 0, if dither then self.uiPipelineDither else self.uiPipeline)
 		self.pcUI:writef32(0, 2 / W)
 		self.pcUI:writef32(4, 2 / H)
 		L.vkCmdPushConstants(cb, self.uiLayout, C.SHADER_VERTEX, 0, 8, self.pcUI)
@@ -1563,7 +1587,7 @@ function Renderer:endFrame()
 		if cw > 0 and ch > 0 then
 			if cmd.kind == "quads" then
 				if cmd.count > 0 then
-					useUI()
+					useUI(cmd.dither)
 					self:_setScissor(cb, cx, cy, cw, ch)
 					local wantSet = if cmd.interp == 1 then cmd.tex:nearestSet() else cmd.tex.set
 					if lastUiMode ~= cmd.interp then

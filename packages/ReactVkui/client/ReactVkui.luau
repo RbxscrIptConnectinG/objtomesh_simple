@@ -1,7 +1,7 @@
 --!nonstrict
 -- ReactVkui public api (based on react-roblox's ReactRoblox.lua)
 
-local environment = require("@applibs/react_environment")
+local environment = require("@applibs/environment")
 local Shared = require("@pkgs/Shared")
 local invariant = Shared.invariant
 

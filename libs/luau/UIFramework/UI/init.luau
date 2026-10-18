@@ -3,14 +3,14 @@
 
 	local ui = require("./ui")
 	local app = ui.createApp({ width = 960, height = 600, title = "Demo" })
-	local panel = app.root:add(ui.Frame({ position = {20, 20}, size = {300, 400}, layout = { gap = 8, padding = 8, stretch = true } }))
+	local panel = app.root:add(ui.Frame({ position = {20, 20}, size = {300, 400}, effects = { padding = 8, listLayout = { padding = 8, itemLineAlignment = "Stretch" } } }))
 	panel:add(ui.Button({ size = {0, 40}, onClick = function(btn) print("clicked") end }))
 	app:run()
 
-	Widgets: Frame, Button, Image, ModelView, ScrollingFrame, ImageSelector, Text, TextBox
-	Common props: antiAlias (text glyph edges: nil / "Grayscale" smooth | "None" hard-edged 1-bit), interpolation (texture filtering of Image / ModelView / Button icon:
-	                 "Linear" (default) | "Nearest Neighbor" | "Cubic" | "Cubic B-spline" | "Mitchell" | "Lanczos"), transparency (0 opaque .. 1 invisible; fades ONLY the background `color` - text, border, images and
-	                 models stay fully visible), position, size, anchor, color {r,g,b,a}, visible, border {width=, color=}, clip, layout, name,
+	Widgets: Frame, Button, Image, ModelView, ScrollingFrame, Text, TextBox
+	Common props: transparencyMethod ("blend" default | "dither" dot-pattern, for all 2D drawing of the widget: background, border, text, image), antiAlias (text glyph edges: nil / "Grayscale" smooth | "None" hard-edged 1-bit), interpolation (texture filtering of Image / ModelView / Button icon:
+	                 "Linear" (default) | "Nearest Neighbor" | "Cubic" | "Cubic B-spline" | "Mitchell" | "Lanczos"), backgroundTransparency / textTransparency / imageTransparency (0 opaque .. 1 invisible; they override the optional 4th (alpha) value of the colour; `transparency` = old name of backgroundTransparency; background only - text, border, images and
+	                 models stay fully visible), position, size, anchor, color {r,g,b,a}, visible, border {width=, color=}, clip, effects, LayoutOrder, name,
 	  ZIndex (default 0): draw order. Higher draws on top (and wins hit tests). Any number, negatives allowed.
 	  ZIndexBehavior ("Sibling" | "Global"): how a widget's descendants are ordered. Set it on app.root (everything) or on any
 	    widget (that widget's subtree); unset = inherited from the parent, the root defaults to "Sibling".
@@ -21,22 +21,47 @@
 	               child whose ZIndex is lower than its parent's draws behind the parent. Borders and scrollbars are
 	               drawn with their widget, so with Global they can be covered by children that share its ZIndex.
 	  position/size: {x, y} in pixels, or {scaleX, offsetX, scaleY, offsetY}
-	  layout: { direction = "vertical"|"horizontal", gap, padding, stretch, wrap, horizontalAlignment, verticalAlignment } -> auto-positions children
-	          (wrap = true with direction "horizontal" flows children into rows, like a grid)
-	          horizontalAlignment "Left" (default) | "Center" | "Right" and verticalAlignment "Top" (default) | "Center" | "Bottom" place the
-	          children inside the widget's padded area, like UIListLayout in Roblox: along the flow direction the whole run of children moves
-	          (with wrap, every row moves, and the block of rows follows verticalAlignment); across it each child is aligned on its own.
-	          They only matter when there is free space (a fixed-size widget; with autoSize the widget hugs its children).
+	  effects: { aspectRatio = {...}, listLayout = {...}, padding = ... }
+	          (every widget; nil = off) things that change how a widget is sized, like Roblox's UI constraints. aspectRatio keeps the
+	          width : height ratio (UIAspectRatioConstraint): "fitWithinMaxSize" (default) shrinks the widget to the largest box of
+	          that ratio inside the size given by `size`; "scaleWithParentSize" keeps the dominant axis ("width" default) as given
+	          by `size` and derives the other one, so with scale sizes it follows the parent. `aspectRatio = 2` is shorthand for { value = 2 }.
+	  effects.listLayout (any widget, incl. ScrollingFrame; nothing is laid out unless you set it - there is no implicit list layout):
+	          like Roblox's UIListLayout it stacks the widget's children, ignoring their `position`.
+	          { fillDirection = "Vertical" (default) | "Horizontal",
+	            padding = gap between items: pixels, or { scale, offset } (scale of the widget's size along the flow direction),
+	            sortOrder = "LayoutOrder" (default: children sorted by their LayoutOrder prop, ties keep insertion order) | "Name" | function(a, b) -> boolean,
+	            wraps = true (only with "Horizontal"): flows items into rows like a grid,
+	            horizontalAlignment = "Left" (default) | "Center" | "Right", verticalAlignment = "Top" (default) | "Center" | "Bottom"
+	              (they only matter when there is free space; along the flow direction the whole run moves, across it each item is placed on its own),
+	            horizontalFlex / verticalFlex = "None" (default) | "Fill" | "SpaceBetween" | "SpaceAround" | "SpaceEvenly": how the free space is shared.
+	              Along the flow direction (horizontalFlex when Horizontal, verticalFlex when Vertical):
+	              Fill: the free space of a row goes to the items. Items whose size has a SCALE part along the flow direction share it in proportion
+	              to that scale (two items with scale 1 get half each, scale 1 and 2 get 1/3 and 2/3; their offset part is added on top, items without
+	              a scale part keep their size). When no item has a scale part, every item grows by the same amount. autoSize items count as fixed.
+	              aspectRatio then acts on the grown size (e.g. dominantAxis "width" derives the height from the share the item got).
+	              The Space* modes put the free space between / around the items. All of them replace the alignment along that axis.
+	              Across the flow direction only "Fill" counts: every item gets the full inner width / height (= itemLineAlignment "Stretch"),
+	            itemLineAlignment = "Automatic" (default: use the alignments) | "Start" | "Center" | "End" | "Stretch" (across the flow direction;
+	              Stretch makes every item as wide / tall as the widget's inner area) }
+	          `effects.listLayout = true` is the same as `{}`. Children with `visible = false` are skipped.
+	  effects.padding (UIPadding, any widget): children are laid out inside a box shrunk by this much, whether they are stacked by a list layout or placed by
+	          `position`. A number = all four sides in pixels, or { left, right, top, bottom } where each is a number (pixels) or { scale, offset }
+	          (left / right scale with the widget's width, top / bottom with its height). With autoSize the widget grows by the padding; a ScrollingFrame's
+	          scroll range includes it. Padding does not move the widget's own text (use textPadding for that).
+	  layout: { direction = "vertical"|"horizontal", gap, padding, stretch, wrap, horizontalAlignment, verticalAlignment }
+	          the older form of listLayout, still accepted (`padding` = inner padding, `gap` = spacing, `stretch` = itemLineAlignment "Stretch").
+	          effects.listLayout wins when both are set.
 	  autoSize ("x" | "y" | "xy" | false, default false; available on EVERY widget): the widget grows to fit its content on
 	          those axes - its children (positions, sizes, layout padding/gap) and its own `text`. `size` on an automatic axis
 	          is the MINIMUM (a widget created with autoSize and no `size` starts at 0). Nested autoSize widgets resolve
 	          inside-out. While measuring, scale components on an automatic axis count as 0 (the parent is not finished
-	          yet), so scale-sized children of an autoSize axis only contribute their offset; `layout.stretch` on an automatic
-	          axis stretches children to the widest/tallest one afterwards. A widget with layout.wrap and autoSize "x"
+	          yet), so scale-sized children of an autoSize axis only contribute their offset; Stretch on an automatic
+	          axis stretches children to the widest/tallest one afterwards. A widget with a wrapping list layout and autoSize "x"
 	          wraps at its `size` width (no wrapping when that is 0).
 	Button:          hoverColor, pressedColor, disabledColor, disabled, image (texture), svg (an SVG icon instead of `image`, see Image),
 	                 onClick/onPress/onRelease/onHover
-	Text:            text, font, textSize (px, default 16), textColor {r,g,b,a}, align ("left"|"center"|"right"),
+	Text:            text, font, textSize (px, default 16), textColor {r,g,b[,a]}, textTransparency, align ("left"|"center"|"right"),
 	                 valign ("top"|"middle"|"bottom"), wrap, lineHeight (multiplier), textPadding,
 	                 autoSize (see Common props: Text defaults to "xy" when you give no `size`, or "y" with wrap),
 	                 textScaled (true = the font size is chosen so the text fills the box; minTextSize/maxTextSize bound it)
@@ -54,7 +79,7 @@
 	                 Keys: arrows (+Shift selects, +Ctrl/Alt moves by word), Home/End (+Ctrl = whole text), Backspace/Delete,
 	                 Ctrl/Cmd+A/C/X/V (system clipboard), Enter, Esc (blur). Mouse: click, drag-select, Shift+click.
 	Image:           texture (a Texture, or the path of a PNG / SVG file - loaded for you and cached; the same for Button `image`,
-	                 ModelView `texture` and ImageSelector items), fit = "stretch" | "contain" | "cover"; `color` is the tint; imageTransparency (0..1); optional backgroundColor {r,g,b,a} behind
+	                 and ModelView `texture`), fit = "stretch" | "contain" | "cover"; `color` is the tint; imageTransparency (0..1); optional backgroundColor {r,g,b,a} behind
 	                 the picture, faded by `transparency`
 	                 svg = "<svg ...>markup" | "path/to/file.svg" | svg.parse() document: drawn sharp at the widget's pixel size (it is rasterized again,
 	                 after svgDelay seconds, when the widget is resized; fit decides the shape, "stretch" ignores the aspect ratio). Also on Button
@@ -62,12 +87,9 @@
 	                 extra sharpness), svgDelay (default 0.12), svgMaxSize (default 2048 px per side), svgBleed (see svg.luau). svg replaces
 	                 `texture` (Image) / `image` (Button); set svg = nil to go back. gui:clearSvgCache() re-reads files. See svg.luau for what is supported.
 	ModelView:       highlight = { fillColor, fillTransparency, outlineColor, outlineTransparency, outlineThickness, depthMode } (real highlight: flat fill over the visible
-	                 surface + silhouette outline, no copied/inverted mesh; see README), transparencyMethod ("blend" default | "dither" dot-pattern, applies to imageTransparency / modelColor alpha), imageTransparency (0..1, fades the rendered model only; `transparency` fades the background only), model, texture, modelColor, yaw, pitch, zoom, fov, autoRotate (rad/s), zoomable,
+	                 surface + silhouette outline, no copied/inverted mesh; see README), modelTransparencyMethod ("blend" default | "dither" dot-pattern; applies to the model's imageTransparency / modelColor alpha; the ModelView `transparencyMethod` is its background), imageTransparency (0..1, fades the rendered model only; `transparency` fades the background only), model, texture, modelColor, yaw, pitch, zoom, fov, autoRotate (rad/s), zoomable,
 	                 doubleSided (default true; false culls back faces - faster, but triangles must wind counter-clockwise)
 	ScrollingFrame:  scrollY, scrollSpeed, scrollbarColor, thumbColor  (always clips; wheel + scrollbar drag)
-	ImageSelector:   a scrolling thumbnail grid. items = { Texture | {texture=, name=} }, thumbSize, target (a ModelView /
-	                 Image whose `.texture` gets set), apply(texture, item, index), onSelect(index, item, selector),
-	                 selected (initial index), allowDeselect, selectedColor.  Methods: setItems(list), select(index|nil)
 
 ]]
 
@@ -214,85 +236,6 @@ function ui.TextBox(props: any?): any
 	w.caret, w.selAnchor = 0, 0 -- caret = number of characters before the cursor; selAnchor = other end of the selection
 	w._sx, w._sy = 0, 0 -- scroll offsets
 	return w
-end
-
--- Scrolling thumbnail grid that can apply the chosen image to a model (see header).
-function ui.ImageSelector(props: any?): any
-	local p: any = props or {}
-	local gap = p.gap or 8
-	local sel: any = create("ScrollingFrame", {
-		color = { 0.12, 0.13, 0.16, 1 },
-		layout = { direction = "horizontal", wrap = true, gap = gap, padding = gap },
-		size = { 300, 140 },
-		thumbSize = 96,
-		selectedColor = { 1, 0.78, 0.2, 1 },
-		allowDeselect = false,
-	})
-	for k, v in p do
-		if k ~= "items" and k ~= "selected" then
-			sel[k] = v
-		end
-	end
-	sel.isSelector = true
-	sel.items = {}
-	sel:setItems(p.items or {})
-	if p.selected then
-		sel:select(p.selected)
-	end
-	return sel
-end
-
-function Widget:setItems(items: { any })
-	assert(self.isSelector, "setItems is only available on ImageSelector widgets")
-	self:clear()
-	self.items = {}
-	self.selected = nil
-	local size = self.thumbSize
-	for i, raw in items do
-		local item = if type(raw) == "string" or (raw.texture == nil and raw.width ~= nil)
-			then { texture = raw }
-			else raw
-		self.items[i] = item
-		self:add(create("Button", {
-			size = { size, size },
-			image = item.texture,
-			imageScale = 0.9,
-			color = { 0.2, 0.21, 0.26, 1 },
-			hoverColor = { 0.28, 0.3, 0.37, 1 },
-			pressedColor = { 0.16, 0.17, 0.21, 1 },
-			onClick = function()
-				self:_clicked(i)
-			end,
-		}))
-	end
-end
-
--- Selects item `index` (nil clears), applies it to `target`/`apply`, then fires onSelect.
-function Widget:select(index: number?)
-	assert(self.isSelector, "select is only available on ImageSelector widgets")
-	self.selected = index
-	for i, b in self.children do
-		b.border = if i == index then { width = 3, color = self.selectedColor } else nil
-	end
-	local item = if index then self.items[index] else nil
-	local tex = if item then item.texture else nil
-	if self.target then
-		self.target.texture = tex
-	end
-	if self.apply then
-		self.apply(tex, item, index)
-	end
-	if self.onSelect then
-		self.onSelect(index, item, self)
-	end
-end
-
-function Widget:_clicked(i: number)
-	if i == self.selected and self.allowDeselect then
-		self:select(nil)
-	else
-		self:select(i)
-	end
 end
 
 function Widget:add(child: any): any
@@ -509,14 +452,48 @@ function Widget:_smoothText(): boolean
 	return smooth
 end
 
--- Opacity multipliers (0 = opaque, 1 = invisible in the props). `transparency` fades ONLY the background quad;
--- `imageTransparency` fades ONLY the Image texture / ModelView model. Text, border, scrollbar and icons are never affected.
-function Widget:_alpha(): number
-	return 1 - math.clamp(self.transparency or 0, 0, 1)
+-- Alpha rule: the 4th value of a colour is optional (default 1). A transparency property (0 opaque .. 1 invisible) that is set
+-- (not nil) ALWAYS overrides the colour's own alpha:
+--   backgroundTransparency (alias: transparency)  the background `color` (Frame, Button, Text, ...) and Image `backgroundColor`
+--   textTransparency                               text of every widget with text (TextBox too: text, placeholder, caret)
+--   imageTransparency                              the Image texture tint / the rendered ModelView model
+-- Borders, scrollbars and the Button icon keep the alpha of their own colours.
+local function resolveAlpha(color: { number }?, transparency: number?): number
+	if transparency ~= nil then
+		return 1 - math.clamp(transparency, 0, 1)
+	end
+	return (color and color[4]) or 1
 end
 
-function Widget:_imageAlpha(): number
-	return 1 - math.clamp(self.imageTransparency or 0, 0, 1)
+-- transparencyMethod / modelTransparencyMethod: "blend" (default, smooth alpha blending) | "dither" (dot pattern, no blending)
+local function methodName(value: any, prop: string): string
+	if value == nil then
+		return "blend"
+	end
+	local key = normalizeName(value)
+	if key == "blend" or key == "dither" then
+		return key
+	end
+	error(`ui: {prop} must be "blend" or "dither" (got "{tostring(value)}")`, 0)
+end
+
+function Widget:_bgAlpha(color: { number }?): number
+	local t = self.backgroundTransparency
+	if t == nil then
+		t = self.transparency
+	end
+	return resolveAlpha(color, t)
+end
+
+function Widget:_imageAlpha(color: { number }?): number
+	return resolveAlpha(color, self.imageTransparency)
+end
+
+-- textColor / any text colour with the final alpha (textTransparency overrides it; a disabled widget is dimmed)
+function Widget:_textRGBA(color: { number }?): { number }
+	local c = color or self.textColor
+	local a = resolveAlpha(c, self.textTransparency)
+	return { c[1], c[2], c[3], a * (if self.disabled then 0.5 else 1) }
 end
 
 -- A texture value may be a Texture, or a file path (PNG / SVG) / SVG markup that is loaded for you.
@@ -664,8 +641,7 @@ function Widget:_drawText(r: any)
 	local innerW, innerH = self.aw - 2 * pad, self.ah - 2 * pad
 	local scaledSize = if self.textScaled and innerW > 0 and innerH > 0 then self:_fitTextSize(innerW, innerH) else nil
 	local layout = self:_textLayout(if self.wrap then innerW else nil, nil, scaledSize)
-	local color = self.textColor
-	color = { color[1], color[2], color[3], (color[4] or 1) * (if self.disabled then 0.5 else 1) }
+	local color = self:_textRGBA(self.textColor)
 	self.gui.text:draw(
 		r,
 		layout,
@@ -961,21 +937,46 @@ function Widget:_drawTextBox(r: any)
 			engine:selectionRects(layout, math.min(self.caret, self.selAnchor), math.max(self.caret, self.selAnchor))
 		do
 			local hoff = engine.alignOffset(layout.lines[rc[5]].width, g.W, self.align)
-			r:quad(ox + hoff + rc[1], oy + rc[2], rc[3], rc[4], sc[1], sc[2], sc[3], sc[4])
+			r:quad(ox + hoff + rc[1], oy + rc[2], rc[3], rc[4], sc[1], sc[2], sc[3], sc[4] or 1)
 		end
 	end
 
 	if n > 0 then
-		engine:draw(r, layout, ox, oy, g.W, layout.height, self.textColor, self.align, "top", self:_smoothText())
+		engine:draw(
+			r,
+			layout,
+			ox,
+			oy,
+			g.W,
+			layout.height,
+			self:_textRGBA(self.textColor),
+			self.align,
+			"top",
+			self:_smoothText()
+		)
 	elseif self.placeholder and self.placeholder ~= "" then
 		local pl = self:_textLayout(if self.multiline then math.max(g.iw, 1) else nil, self.placeholder)
-		engine:draw(r, pl, g.ix, oy, g.iw, pl.height, self.placeholderColor, self.align, "top", self:_smoothText())
+		engine:draw(
+			r,
+			pl,
+			g.ix,
+			oy,
+			g.iw,
+			pl.height,
+			self:_textRGBA(self.placeholderColor),
+			self.align,
+			"top",
+			self:_smoothText()
+		)
 	end
 
 	if focused and self.editable and (gui.time - (self._blinkT or 0)) % 1.06 < 0.53 then
 		local cx, cy, li = engine:caretPosition(layout, self.caret)
 		local hoff = engine.alignOffset(layout.lines[li].width, g.W, self.align)
-		local cc = self.caretColor or self.textColor
+		local cc = self.caretColor
+		if cc == nil then
+			cc = self:_textRGBA(self.textColor)
+		end
 		r:quad(
 			math.floor(ox + hoff + cx),
 			oy + cy,
@@ -1023,20 +1024,74 @@ function Widget:selectAll()
 	self._follow = true
 end
 
-local function childSize(c: any, parent: any, forcedW: number?): (number?, number?)
+local function rawChildSize(c: any, parent: any, forcedW: number?): (number?, number?)
 	if c.autoSize then
 		return c:_resolveSize(parent, forcedW)
 	end
 	return udim(c.size, parent.aw, parent.ah)
 end
 
+-- effects.aspectRatio = { value = width / height, type = "fitWithinMaxSize" | "scaleWithParentSize", dominantAxis = "width" | "height" }
+-- (or just the number). Works like Roblox's UIAspectRatioConstraint; w, h are the size the widget would have without it.
+--   fitWithinMaxSize (default):  the largest box with that ratio that fits inside w x h.
+--   scaleWithParentSize:         the dominant axis keeps the size from `size` (it follows the parent when that size uses scale)
+--                                and the other axis is derived from it, so the widget may grow beyond w x h on the other axis.
+local function applyAspectRatio(ar: any, w: number, h: number): (number, number)
+	local value, kind, axis = ar, "fitwithinmaxsize", "width"
+	if type(ar) == "table" then
+		value = ar.value
+		if ar.type ~= nil then
+			kind = normalizeName(ar.type)
+		end
+		if ar.dominantAxis ~= nil then
+			axis = normalizeName(ar.dominantAxis)
+		end
+	end
+	if type(value) ~= "number" or not (value > 0) then
+		error("ui: effects.aspectRatio.value must be a number greater than 0 (width / height)", 0)
+	end
+	if kind ~= "fitwithinmaxsize" and kind ~= "scalewithparentsize" then
+		error(
+			`ui: effects.aspectRatio.type must be "fitWithinMaxSize" or "scaleWithParentSize" (got "{tostring(ar.type)}")`,
+			0
+		)
+	end
+	if axis ~= "width" and axis ~= "height" then
+		error(`ui: effects.aspectRatio.dominantAxis must be "width" or "height" (got "{tostring(ar.dominantAxis)}")`, 0)
+	end
+	if kind == "fitwithinmaxsize" then
+		if w / value <= h then
+			return w, w / value
+		end
+		return h * value, h
+	end
+	if axis == "width" then
+		return w, w / value
+	end
+	return h * value, h
+end
+
+-- every kind of effect a widget can carry (`effects` prop); later effects slot in here
+local function applyEffects(c: any, w: number, h: number): (number, number)
+	local fx = c.effects
+	if fx == nil then
+		return w, h
+	end
+	if fx.aspectRatio ~= nil then
+		w, h = applyAspectRatio(fx.aspectRatio, w, h)
+	end
+	return w, h
+end
+
+local function childSize(c: any, parent: any, forcedW: number?): (number?, number?)
+	local w, h = rawChildSize(c, parent, forcedW)
+	return applyEffects(c, w, h)
+end
+
 --------------------------------------------------------------------------
 -- Layout
 --------------------------------------------------------------------------
 
--- Lays out the children inside a W x H box whose origin is (ox, oy) and returns their extent (including layout
--- padding). With apply = false nothing is written (used to measure autoSize content). autoW/autoH say that the
--- axis is being measured, so stretch must not use it; limitW is the width at which wrapping rows break.
 -- layout.horizontalAlignment ("Left" | "Center" | "Right") / layout.verticalAlignment ("Top" | "Center" | "Bottom") -> 0 / 0.5 / 1
 local function alignFraction(value: any, horizontal: boolean): number
 	if value == nil then
@@ -1058,7 +1113,182 @@ local function alignFraction(value: any, horizontal: boolean): number
 	)
 end
 
-function Widget:_flow(
+-- effects.listLayout.horizontalFlex / verticalFlex: how the free space along the flow direction is shared (UIFlexAlignment)
+local FLEX: { [string]: string } =
+	{ none = "none", fill = "fill", spacebetween = "between", spacearound = "around", spaceevenly = "evenly" }
+-- effects.listLayout.itemLineAlignment: where each item sits across the flow direction (UIListLayout.ItemLineAlignment)
+local ITEM_LINE: { [string]: any } = { automatic = false, start = 0, center = 0.5, ["end"] = 1, stretch = "stretch" }
+
+-- UDim-style value: a number (pixels) or { scale, offset }
+local function udimValue(v: any, base: number): number
+	if v == nil then
+		return 0
+	elseif type(v) == "number" then
+		return v
+	end
+	return (v[1] or 0) * base + (v[2] or 0)
+end
+
+-- effects.padding (UIPadding): a number (all four sides, pixels) or { left, right, top, bottom }, each a number or { scale, offset }.
+-- left / right scale with the widget's width, top / bottom with its height.
+local function paddingSides(p: any, W: number, H: number): (number, number, number, number)
+	if type(p) == "number" then
+		return p, p, p, p
+	elseif type(p) ~= "table" then
+		error("ui: effects.padding must be a number or a table { left, right, top, bottom }", 0)
+	end
+	return udimValue(p.left, W), udimValue(p.right, W), udimValue(p.top, H), udimValue(p.bottom, H)
+end
+
+-- Normalised list layout of a widget, or nil when it has none. `effects.listLayout` (Roblox UIListLayout) wins; the older `layout`
+-- table is still understood (its `padding` is the inner padding, its `gap` the spacing).
+--   cfg = { horizontal, gap (UDim value), inset (only the older `layout` form has one), wrap, ha, va, stretch, cross (0 / 0.5 / 1 | nil), flex, sort }
+local function listConfig(w: any): any
+	local le = if w.effects then w.effects.listLayout else nil
+	if le == true then
+		le = {}
+	end
+	if le then
+		local dir = if le.fillDirection ~= nil then le.fillDirection else le.direction
+		local dirName = if dir == nil then "vertical" else normalizeName(dir)
+		if dirName ~= "vertical" and dirName ~= "horizontal" then
+			error(`ui: effects.listLayout.fillDirection must be "Vertical" or "Horizontal" (got "{tostring(dir)}")`, 0)
+		end
+		local horizontal = dirName == "horizontal"
+
+		local line = false
+		if le.itemLineAlignment ~= nil then
+			line = ITEM_LINE[normalizeName(le.itemLineAlignment)]
+			if line == nil then
+				error(
+					`ui: effects.listLayout.itemLineAlignment must be "Automatic", "Start", "Center", "End" or "Stretch" (got "{tostring(
+						le.itemLineAlignment
+					)}")`,
+					0
+				)
+			end
+		end
+
+		local function flexOf(value: any, prop: string): string
+			if value == nil then
+				return "none"
+			end
+			local f = FLEX[normalizeName(value)]
+			if f == nil then
+				error(
+					`ui: effects.listLayout.{prop} must be "None", "Fill", "SpaceBetween", "SpaceAround" or "SpaceEvenly" (got "{tostring(
+						value
+					)}")`,
+					0
+				)
+			end
+			return f
+		end
+		local flexH, flexV = flexOf(le.horizontalFlex, "horizontalFlex"), flexOf(le.verticalFlex, "verticalFlex")
+		-- along the flow direction every mode applies; across it only "Fill" does (= every item as wide / tall as the inner area)
+		local flex = if horizontal then flexH else flexV
+		local crossFlex = if horizontal then flexV else flexH
+
+		-- sortOrder: "LayoutOrder" (default; ties keep insertion order) | "Name" | function(a, b) -> boolean (a before b)
+		local sort = le.sortOrder
+		if sort ~= nil and type(sort) ~= "function" then
+			local key = normalizeName(sort)
+			if key ~= "layoutorder" and key ~= "name" then
+				error(
+					`ui: effects.listLayout.sortOrder must be "LayoutOrder", "Name" or a function (got "{tostring(sort)}")`,
+					0
+				)
+			end
+			sort = key
+		end
+
+		local wrapValue = if le.wraps ~= nil then le.wraps else le.wrap
+		return {
+			horizontal = horizontal,
+			gap = le.padding,
+			inset = 0,
+			wrap = wrapValue == true,
+			ha = alignFraction(le.horizontalAlignment, true),
+			va = alignFraction(le.verticalAlignment, false),
+			stretch = line == "stretch" or crossFlex == "fill",
+			cross = if type(line) == "number" then line else nil,
+			flex = flex,
+			sort = sort or "layoutorder",
+		}
+	end
+
+	local old = w.layout
+	if old then
+		return {
+			horizontal = old.direction ~= nil and normalizeName(old.direction) == "horizontal",
+			gap = old.gap,
+			inset = old.padding or 0,
+			wrap = old.wrap == true,
+			ha = alignFraction(old.horizontalAlignment, true),
+			va = alignFraction(old.verticalAlignment, false),
+			stretch = old.stretch == true,
+			cross = nil,
+			flex = "none",
+			sort = false,
+		}
+	end
+	return nil
+end
+
+-- children in layout order (cfg.sort: "layoutorder" | "name" | function | false); ties keep insertion order
+local function orderedChildren(kids: { any }, sort: any): { any }
+	if not sort then
+		return kids
+	end
+	if sort == "layoutorder" then
+		local first = kids[1] and kids[1].LayoutOrder or 0
+		local differs = false
+		for _, c in kids do
+			if (c.LayoutOrder or 0) ~= first then
+				differs = true
+				break
+			end
+		end
+		if not differs then
+			return kids
+		end
+	end
+	local list = {}
+	for i, c in kids do
+		list[i] = { c = c, i = i }
+	end
+	table.sort(list, function(a, b)
+		local ca, cb = a.c, b.c
+		if sort == "layoutorder" then
+			local oa, ob = ca.LayoutOrder or 0, cb.LayoutOrder or 0
+			if oa ~= ob then
+				return oa < ob
+			end
+		elseif sort == "name" then
+			local na, nb = tostring(ca.name or ""), tostring(cb.name or "")
+			if na ~= nb then
+				return na < nb
+			end
+		else
+			if sort(ca, cb) then
+				return true
+			elseif sort(cb, ca) then
+				return false
+			end
+		end
+		return a.i < b.i
+	end)
+	local out = table.create(#list)
+	for i, e in list do
+		out[i] = e.c
+	end
+	return out
+end
+
+-- Lays out the children inside a W x H box whose origin is (ox, oy) and returns their extent (including layout
+-- padding). With apply = false nothing is written (used to measure autoSize content). autoW/autoH say that the
+-- axis is being measured, so stretch must not use it; limitW is the width at which wrapping rows break.
+function Widget:_flowInner(
 	W: number,
 	H: number,
 	limitW: number,
@@ -1071,67 +1301,184 @@ function Widget:_flow(
 	local scrolling = self.kind == "ScrollingFrame"
 	local proxy = { aw = W, ah = H }
 	local extentX, extentY = 0, 0
-	local cfg = self.layout
+	local cfg = listConfig(self)
 
 	if cfg then
-		local pad, gap = cfg.padding or 0, cfg.gap or 0
-		local horizontal = cfg.direction == "horizontal"
-		local cx, cy = pad, pad
-		local rowH = 0
+		local pad = cfg.inset
+		local horizontal = cfg.horizontal
+		local gap = udimValue(cfg.gap, if horizontal then W else H)
 		local wrap = cfg.wrap and horizontal
 		local barSpace = if scrolling then BAR_W + 2 else 0
-		local ha = alignFraction(cfg.horizontalAlignment, true)
-		local va = alignFraction(cfg.verticalAlignment, false)
-		local placed = {} -- { c, w, h, x, y, line } in layout order (alignment is applied afterwards)
-		local lines = { { main = 0, cross = 0 } } -- per row (one line unless wrapping): used extent along / across the flow
-		for _, c in self.children do
+		local ha, va = cfg.ha, cfg.va
+		local crossFrac = cfg.cross or (if horizontal then va else ha)
+		local flex = cfg.flex
+		local innerW, innerH = W - 2 * pad - barSpace, H - 2 * pad
+		-- with flex "Fill" the scale part of an item's size along the flow direction is a share of the free space, not a size:
+		-- while measuring and breaking rows it counts as 0 (the parent proxy has no extent along that axis)
+		-- (only when that axis has a real size: an autoSize axis cannot have free space)
+		local fillActive = flex == "fill" and not (if horizontal then autoW else autoH)
+		local fillProxy = if fillActive then (if horizontal then { aw = 0, ah = H } else { aw = W, ah = 0 }) else nil
+
+		-- 1. size every item and group the items into lines (one line, or several rows when wrapping)
+		--    item = { c, w, h (final size), rw, rh (size before aspectRatio), weight, line, index }
+		local lines = { { main = 0, cross = 0, count = 0, weight = 0, items = {} } } -- main / cross: extent along / across the flow
+		for _, c in orderedChildren(self.children, cfg.sort) do
 			if c.visible then
 				c.gui = self.gui
 				local forcedW = nil
 				if cfg.stretch and not wrap and not horizontal and not autoW then
 					forcedW = W - 2 * pad - barSpace
 				end
-				local w, h = childSize(c, proxy, forcedW)
-				if forcedW then
-					w = forcedW
+				local weight = 0 -- flex "Fill": the scale part of the size along the flow direction
+				if fillProxy then
+					local size = c.size
+					local auto = c.autoSize
+						and string.find(tostring(c.autoSize), if horizontal then "x" else "y", 1, true)
+					if not auto and type(size) == "table" and #size >= 4 then
+						weight = math.max(0, if horizontal then size[1] else size[3])
+					end
 				end
-				if wrap and cx > pad and cx + w > limitW - pad - barSpace then
-					cx, cy, rowH = pad, cy + rowH + gap, 0
-					table.insert(lines, { main = 0, cross = 0 })
+				local rw, rh = rawChildSize(c, if weight > 0 then fillProxy else proxy, forcedW)
+				if forcedW then
+					rw = forcedW
 				end
 				if cfg.stretch and not wrap and horizontal and not autoH then
-					h = H - 2 * pad
+					rh = H - 2 * pad
 				end
-				rowH = math.max(rowH, h)
+				local w, h = rw, rh
+				if weight == 0 then
+					w, h = applyEffects(c, rw, rh) -- an item that gets a share of the free space is sized in step 2
+				end
+
 				local line = lines[#lines]
-				line.main = math.max(line.main, (if horizontal then cx + w else cy + h) - pad)
-				line.cross = math.max(line.cross, if horizontal then h else w)
-				table.insert(placed, { c, w, h, cx, cy, line })
-				extentX, extentY = math.max(extentX, cx + w), math.max(extentY, cy + h)
-				if horizontal then
-					cx += w + gap
-				else
-					cy += h + gap
+				local pos = if line.count > 0 then line.main + gap else 0
+				if wrap and line.count > 0 and pad + pos + w > limitW - pad - barSpace then
+					line = { main = 0, cross = 0, count = 0, weight = 0, items = {} }
+					table.insert(lines, line)
+					pos = 0
 				end
+				line.main = pos + (if horizontal then w else h)
+				line.cross = math.max(line.cross, if horizontal then h else w)
+				line.count += 1
+				line.weight += weight
+				table.insert(
+					line.items,
+					{ c = c, w = w, h = h, rw = rw, rh = rh, weight = weight, line = line, index = line.count }
+				)
 			end
 		end
 
+		-- 2. flex "Fill": hand the free space of each line to its items (by scale weight, or equally when none has a scale part), then let
+		--    aspectRatio act on the new size. An item whose ratio makes it end up with a different size along the flow direction than the share
+		--    it was offered is frozen at that size and the space it did not use (or needs more of) is shared again among the other items, until
+		--    nothing changes - so the other items always fill what is left, with no gap.
+		if fillActive then
+			local mainInner = if horizontal then innerW else innerH
+			for _, line in lines do
+				local equal = line.weight == 0
+				local flexible = {}
+				local fixedMain = gap * math.max(0, line.count - 1) -- gaps + items that do not take part
+				for _, it in line.items do
+					if equal or it.weight > 0 then
+						it.share = if equal then 1 else it.weight
+						it.frozen = false
+						table.insert(flexible, it)
+					else
+						fixedMain += if horizontal then it.w else it.h
+					end
+				end
+				for _round = 1, #flexible + 1 do
+					local sumShare, taken = 0, 0
+					for _, it in flexible do
+						if it.frozen then
+							taken += if horizontal then it.w else it.h
+						else
+							sumShare += it.share
+							taken += if horizontal then it.rw else it.rh -- the offset part of the size
+						end
+					end
+					if sumShare == 0 then
+						break
+					end
+					local free = math.max(0, mainInner - fixedMain - taken)
+					local changed = false
+					for _, it in flexible do
+						if not it.frozen then
+							local offered = (if horizontal then it.rw else it.rh) + free * it.share / sumShare
+							local w, h = it.rw, it.rh
+							if horizontal then
+								w = offered
+							else
+								h = offered
+							end
+							it.w, it.h = applyEffects(it.c, w, h)
+							if math.abs((if horizontal then it.w else it.h) - offered) > 0.01 then
+								it.frozen = true
+								changed = true
+							end
+						end
+					end
+					if not changed then
+						break
+					end
+				end
+				local main, cross = 0, 0
+				for i, it in line.items do
+					main += (if horizontal then it.w else it.h) + (if i > 1 then gap else 0)
+					cross = math.max(cross, if horizontal then it.h else it.w)
+				end
+				line.main, line.cross = main, cross
+			end
+		end
+
+		-- 3. positions inside the padded box (alignment is added afterwards) and the extent
+		local crossStart = pad
+		for _, line in lines do
+			local run = pad
+			for _, it in line.items do
+				if horizontal then
+					it.x, it.y = run, crossStart
+					run += it.w + gap
+				else
+					it.x, it.y = pad, run
+					run += it.h + gap
+				end
+				extentX, extentY = math.max(extentX, it.x + it.w), math.max(extentY, it.y + it.h)
+			end
+			crossStart += line.cross + gap
+		end
+
 		if apply then
-			local innerW, innerH = W - 2 * pad - barSpace, H - 2 * pad
 			-- wrapped rows are aligned as one block too (along the other axis)
 			local blockDY = if wrap then math.max(0, innerH - (extentY - pad)) * va else 0
-			for _, p in placed do
-				local c, w, h, x, y, line = p[1], p[2], p[3], p[4], p[5], p[6]
-				local dx, dy = 0, 0
-				if horizontal then
-					dx = math.max(0, innerW - line.main) * ha
-					dy = math.max(0, (if wrap then line.cross else innerH) - h) * va + blockDY
-				else
-					dy = math.max(0, innerH - line.main) * va
-					dx = math.max(0, innerW - w) * ha
+			for _, line in lines do
+				local mainFree = math.max(0, (if horizontal then innerW else innerH) - line.main)
+				for _, it in line.items do
+					local w, h, index = it.w, it.h, it.index
+					local mainOffset
+					if flex == "none" or flex == "fill" then
+						mainOffset = mainFree * (if horizontal then ha else va) -- after "Fill" only what aspectRatio left over
+					else
+						local n = line.count
+						if flex == "between" then
+							mainOffset = if n > 1 then mainFree / (n - 1) * (index - 1) else 0
+						elseif flex == "around" then
+							mainOffset = mainFree / n * (index - 0.5)
+						else -- "evenly"
+							mainOffset = mainFree / (n + 1) * index
+						end
+					end
+					local dx, dy = 0, 0
+					if horizontal then
+						dx = mainOffset
+						dy = math.max(0, (if wrap then line.cross else innerH) - h) * crossFrac + blockDY
+					else
+						dy = mainOffset
+						dx = math.max(0, innerW - w) * crossFrac
+					end
+					it.c.aw, it.c.ah = w, h
+					it.c.ax, it.c.ay = ox + it.x + math.floor(dx + 0.5), oy + it.y + math.floor(dy + 0.5)
 				end
-				c.aw, c.ah = w, h
-				c.ax, c.ay = ox + x + math.floor(dx + 0.5), oy + y + math.floor(dy + 0.5)
 			end
 		end
 		extentX += pad
@@ -1151,6 +1498,37 @@ function Widget:_flow(
 		end
 	end
 	return extentX, extentY
+end
+
+-- effects.padding shrinks the box the children are laid out in; the returned extent includes the padding on both sides
+-- (so autoSize hugs children + padding, and a ScrollingFrame's content includes the bottom padding).
+function Widget:_flow(
+	W: number,
+	H: number,
+	limitW: number,
+	ox: number,
+	oy: number,
+	apply: boolean,
+	autoW: boolean,
+	autoH: boolean
+): (number?, number?)
+	local fx = self.effects
+	local pad = if fx then fx.padding else nil
+	if pad == nil then
+		return self:_flowInner(W, H, limitW, ox, oy, apply, autoW, autoH)
+	end
+	local pl, pr, pt, pb = paddingSides(pad, W, H)
+	local ex, ey = self:_flowInner(
+		math.max(0, W - pl - pr),
+		math.max(0, H - pt - pb),
+		math.max(0, limitW - pl - pr),
+		ox + pl,
+		oy + pt,
+		apply,
+		autoW,
+		autoH
+	)
+	return ex + pl + pr, ey + pt + pb
 end
 
 function Widget:_layoutChildren()
@@ -1289,7 +1667,7 @@ end
 
 -- highlight = { fillColor = {r,g,b}, fillTransparency = 0..1, outlineColor = {r,g,b}, outlineTransparency = 0..1, outlineThickness = px,
 --               depthMode = "Occluded" | "AlwaysOnTop" }
--- (all optional; defaults: red fill at 0.5, white outline at 0, 2 px, "Occluded"). A colour's own alpha is multiplied in. false / nil = no highlight.
+-- (all optional; defaults: red fill at 0.5, white outline at 0, 2 px, "Occluded"). A transparency that is set overrides the colour's own alpha. false / nil = no highlight.
 local function normalizeHighlight(h: any): any
 	if not h then
 		return nil
@@ -1304,10 +1682,15 @@ local function normalizeHighlight(h: any): any
 	else
 		error(`ui: unknown highlight depthMode "{h.depthMode}" (use "Occluded" or "AlwaysOnTop")`, 0)
 	end
-	local ft, ot = math.clamp(h.fillTransparency or 0.5, 0, 1), math.clamp(h.outlineTransparency or 0, 0, 1)
+	-- a transparency that is set overrides the colour's alpha; otherwise the colour's alpha is used (fill default: half transparent)
+	local fa = if h.fillTransparency ~= nil
+		then 1 - math.clamp(h.fillTransparency, 0, 1)
+		elseif fc[4] ~= nil then fc[4]
+		else 0.5
+	local oa = if h.outlineTransparency ~= nil then 1 - math.clamp(h.outlineTransparency, 0, 1) else (oc[4] or 1)
 	return {
-		fill = { fc[1], fc[2], fc[3], (fc[4] or 1) * (1 - ft) },
-		outline = { oc[1], oc[2], oc[3], (oc[4] or 1) * (1 - ot) },
+		fill = { fc[1], fc[2], fc[3], fa },
+		outline = { oc[1], oc[2], oc[3], oa },
 		thickness = math.max(h.outlineThickness or 2, 0),
 		onTop = onTop,
 	}
@@ -1322,7 +1705,7 @@ function Widget:_drawBody(r: any, dt: number)
 	if self.kind == "Image" then
 		local bg = self.backgroundColor
 		if bg then
-			r:quad(x, y, w, h, bg[1], bg[2], bg[3], (bg[4] or 1) * self:_alpha())
+			r:quad(x, y, w, h, bg[1], bg[2], bg[3], self:_bgAlpha(bg))
 		end
 		local tex = self._svgTex or self:_resolveTex(self.texture)
 		if tex then
@@ -1344,22 +1727,7 @@ function Widget:_drawBody(r: any, dt: number)
 					v0, v1 = (1 - f) / 2, 1 - (1 - f) / 2
 				end
 			end
-			r:quad(
-				qx,
-				qy,
-				qw,
-				qh,
-				c[1],
-				c[2],
-				c[3],
-				(c[4] or 1) * self:_imageAlpha(),
-				tex,
-				u0,
-				v0,
-				u1,
-				v1,
-				self:_interp()
-			)
+			r:quad(qx, qy, qw, qh, c[1], c[2], c[3], self:_imageAlpha(c), tex, u0, v0, u1, v1, self:_interp())
 		end
 	else
 		local col = c
@@ -1372,7 +1740,7 @@ function Widget:_drawBody(r: any, dt: number)
 				col = self.hoverColor
 			end
 		end
-		r:quad(x, y, w, h, col[1], col[2], col[3], col[4] * self:_alpha())
+		r:quad(x, y, w, h, col[1], col[2], col[3], self:_bgAlpha(col))
 	end
 
 	local icon = if self.kind == "Button" then (self._svgTex or self:_resolveTex(self.image)) else nil
@@ -1394,7 +1762,7 @@ function Widget:_drawBody(r: any, dt: number)
 			t[1],
 			t[2],
 			t[3],
-			t[4],
+			t[4] or 1,
 			icon,
 			nil,
 			nil,
@@ -1418,11 +1786,11 @@ function Widget:_drawBody(r: any, dt: number)
 			h,
 			mvp,
 			light,
-			{ mc[1], mc[2], mc[3], (mc[4] or 1) * self:_imageAlpha() },
+			{ mc[1], mc[2], mc[3], self:_imageAlpha(mc) },
 			self:_resolveTex(self.texture),
 			self.doubleSided,
 			self:_interp(),
-			self.transparencyMethod,
+			methodName(self.modelTransparencyMethod, "modelTransparencyMethod"),
 			normalizeHighlight(self.highlight)
 		)
 	end
@@ -1443,8 +1811,8 @@ function Widget:_drawOverlay(r: any)
 		local tx, ty, th = scrollbarGeometry(self)
 		if tx then
 			local tc, hc = self.scrollbarColor, self.thumbColor
-			r:quad(tx, y, BAR_W, h, tc[1], tc[2], tc[3], tc[4])
-			r:quad(tx, ty, BAR_W, th, hc[1], hc[2], hc[3], hc[4])
+			r:quad(tx, y, BAR_W, h, tc[1], tc[2], tc[3], tc[4] or 1)
+			r:quad(tx, ty, BAR_W, th, hc[1], hc[2], hc[3], hc[4] or 1)
 		end
 	end
 
@@ -1954,6 +2322,7 @@ function GUI:draw()
 	for i = 1, #drawW do
 		local w = drawW[i]
 		r:setClipRect(w._clip)
+		r:setQuadMethod(methodName(w.transparencyMethod, "transparencyMethod"))
 		if drawP[i] == 1 then
 			w:_drawBody(r, dt)
 		else
@@ -2011,7 +2380,7 @@ function ui.createApp(opts: AppOptions?): any
 		glfw.terminate()
 		error(renderer, 0)
 	end
-	local fake_renderer = setmetatable({}, {
+	local fake = setmetatable({}, {
 		__index = function(tbl, key)
 			if key == "UIFW" then
 				return ui
@@ -2019,20 +2388,20 @@ function ui.createApp(opts: AppOptions?): any
 			return renderer[key]
 		end,
 	})
-	local gui = ui.new(window, fake_renderer)
+	local gui = ui.new(window, fake)
 	if o.ZIndexBehavior then
 		gui.root.ZIndexBehavior = o.ZIndexBehavior
 	end
 	if o.font then
 		local okFont, fontErr = pcall(gui.setDefaultFont, gui, o.font)
 		if not okFont then
-			fake_renderer:destroy()
+			fake:destroy()
 			window:destroy()
 			glfw.terminate()
 			error(fontErr, 0)
 		end
 	end
-	return setmetatable({ glfw = glfw, window = window, renderer = fake_renderer, gui = gui, root = gui.root }, App)
+	return setmetatable({ glfw = glfw, window = window, renderer = fake, gui = gui, root = gui.root }, App)
 end
 
 -- step(dt) runs once per frame before the UI is laid out; use it to mutate widgets.

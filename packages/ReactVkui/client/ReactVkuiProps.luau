@@ -3,13 +3,12 @@
 	ReactVkuiProps - turns React props into vkui widget fields.
 
 	Elements are the vkui widget kinds, `React.createElement("Button", props, children)`:
-	Frame, Button, Image, ModelView, ScrollingFrame, ImageSelector, Text, TextBox
+	Frame, Button, Image, ModelView, ScrollingFrame, Text, TextBox
 
 	* every prop is the same field you would pass to ui.Button({ ... }) etc. (size, position, color, onClick, ...)
 	* a string / number as the ONLY child becomes the `text` prop:   e("Text", nil, "Hello")
 	* a prop set to nil goes back to the widget's default value
 	* TextBox `text` is applied with widget:setText (so the caret is kept sensible and onChanged does not fire)
-	* ImageSelector `items` -> setItems(), `selected` -> select()
 	* a React binding (React.createBinding) as a prop value updates that field without re-rendering
 ]]
 
@@ -48,10 +47,6 @@ local function setProp(widget, kind: string, key: string, value: any)
 		else
 			widget.text = value
 		end
-	elseif kind == "ImageSelector" and key == "items" then
-		widget:setItems(value or {})
-	elseif kind == "ImageSelector" and key == "selected" then
-		widget:select(value)
 	else
 		widget[key] = value
 	end
@@ -110,10 +105,9 @@ local function splitProps(kind: string, props)
 end
 
 -- creates the widget; bindings are returned so the host config can attach them once the widget is complete
-function exports.create(UIFW, kind: string, props)
+function exports.create(root, kind: string, props)
 	local clean, bindings = splitProps(kind, props)
-
-	local ok, widget = pcall(UIFW[kind], clean)
+	local ok, widget = pcall(root[kind], clean)
 	if not ok then
 		error(`ReactVkui: could not create <{kind}>: {tostring(widget)}`, 0)
 	end

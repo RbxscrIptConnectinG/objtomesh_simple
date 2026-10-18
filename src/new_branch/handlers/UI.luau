@@ -5,15 +5,19 @@ local UIFW = require("@libs/luau/UIFramework")
 local react = require("@pkgs/React")
 local reactVkui = require("@pkgs/ReactVkui")
 local reactReflex = require("@pkgs/ReactReflex")
+local reflex = require("@pkgs/Reflex")
 
 local win_popups = require("@libs/luau/WinLibs/popup")
 
 local types = require("@toMesh/types")
 
+local theme = require("@toMesh/theme")
+
 local e = react.createElement
 
 local components = {
 	intro = require("@toMesh/components/intro"),
+	app = require("@toMesh/components/app"),
 }
 
 local UI = {}
@@ -34,9 +38,10 @@ function UI.new(root: types.App)
 
 	self.app = UIFW.createApp({
 		width = 640,
-		height = 640,
-		title = "vkui demo",
+		height = 640 // 1.3,
+		title = "ObjToMesh",
 		glfwPath = "./libs/bin/glfw3.dll",
+		resizable = true,
 		renderer = {
 			libraryPath = "C:/Windows/System32/vulkan-1.dll",
 		},
@@ -49,58 +54,41 @@ function UI.new(root: types.App)
 	})
 
 	self.producers = {
-		intro = require("../producers/intro"),
-	}
+		main = require("../producers/main"),
+	} :: { [any]: reflex.Producer<any, any> }
 	self.children = self:getRender()
-
+	self.runningTime = 0
 	return self
 end
 
 function UI:getRender()
 	return e("Frame", {
 		size = { 1, 0, 1, 0 },
-		color = { 0.08, 0.09, 0.11, 0 },
+		color = theme.background,
 		anchor = { 0.5, 0.5 },
 		position = { 0.5, 0, 0.5, 0 },
 		backgroundTransparency = 0,
 	}, {
-		button = e("Button", {
-			onClick = function()
-				self.producers.intro.transparency.add(0.1)
-			end,
-		}),
-		buttonplus = e("Button", {
-			anchor = { 1, 0 },
-			position = { 1, 0, 0, 0 },
-			onClick = function()
-				self.producers.intro.transparency.remove(0.1)
-			end,
-		}),
-		e(reactReflex.ReflexProvider, {
-			producer = self.producers.intro.transparency,
-		}, {
-			indicator = e(function(props)
-				local producer = reactReflex.useProducer()
-				local selected = reactReflex.useSelector(function(state)
-					return state
-				end)
 
-				return e("Text", {
-					anchor = { 0, 1 },
-					position = { 0, 0, 1, 0 },
-					size = { 0, 300, 0, 0 },
-					autoSize = "y",
-					text = `transparency: {string.format("%.3f", selected)}`,
-				})
-			end),
+		provider = e(reactReflex.ReflexProvider, {
+			producer = self.producers.main,
+		}, {
 			intro = e(components.intro, {}),
+			app = e(components.app, {}),
 		}),
 	})
 end
 
 function UI:run()
 	reactVkui.run(self.app, self.children, {
-		step = function(dt) end,
+		step = function(dt)
+			self.runningTime += dt
+			local curstate = self.producers.main:getState()
+			if not curstate.intro.ended and self.runningTime > 2 then
+				local alpha = (self.runningTime - 2) / 1
+				self.producers.main.setIntroTransparency(alpha)
+			end
+		end,
 	})
 	self.app:destroy()
 end

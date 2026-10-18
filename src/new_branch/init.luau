@@ -5,9 +5,35 @@ local process = zune.process
 local sift = require("@pkgs/Sift")
 local environment = require("@applibs/environment")
 local types = require("@self/types")
+local discord = require("@libs/luau/discord")
+
+local RPC = discord.new("1560644845788463154")
+
+RPC:on("ready", function(user)
+	print("Connected to Discord as " .. tostring(user.username))
+end)
+RPC:on("disconnected", function(reason)
+	print("Discord disconnected: " .. tostring(reason) .. " (retrying)")
+end)
+RPC:on("error", function(code, message)
+	warn("Discord error " .. tostring(code) .. ": " .. tostring(message))
+end)
+
+RPC:setActivity({
+	details = "nothing here",
+	state = "don't mind it.",
+	startTimestamp = discord.now(),
+	--largeImage = ":placeholder:",
+	--largeText = "oi",
+	buttons = { {
+		label = "example",
+		url = "https://example.com",
+	} },
+})
+
+RPC:run()
 
 local app = {} :: types.App
-
 app.mesh = require("@applibs/mesh")
 app.utils = require("@self/utils")(app)
 
@@ -26,3 +52,4 @@ app.handlers.CLI = require("@self/handlers/CLI")
 
 app.handlers.UI = require("@self/handlers/UI").new(app)
 app.handlers.UI:run()
+RPC:close()

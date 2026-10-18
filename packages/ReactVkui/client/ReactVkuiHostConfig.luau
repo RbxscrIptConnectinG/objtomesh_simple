@@ -23,7 +23,7 @@ local precacheFiberNode = ComponentTree.precacheFiberNode
 local uncacheFiberNode = ComponentTree.uncacheFiberNode
 local updateFiberProps = ComponentTree.updateFiberProps
 
-local VKuiProps = require("./ReactVkuiProps")
+local Props = require("./ReactVkuiProps")
 
 local exports = {}
 Object.assign(exports, Shared.ReactFiberHostConfig.WithNoPersistence)
@@ -94,9 +94,9 @@ end
 exports.beforeActiveInstanceBlur = function() end
 exports.afterActiveInstanceBlur = function() end
 exports.resetAfterCommit = function(_containerInfo) end
-local printed = false
+
 exports.createInstance = function(type_, props, _rootContainerInstance, _hostContext, internalInstanceHandle)
-	local widget, bindings = VKuiProps.create(_rootContainerInstance.gui.renderer.UIFW, type_, props)
+	local widget, bindings = Props.create(_rootContainerInstance.gui.renderer.UIFW, type_, props)
 	pendingBindings[widget] = bindings
 	precacheFiberNode(internalInstanceHandle, widget)
 	updateFiberProps(widget, props)
@@ -112,7 +112,7 @@ exports.finalizeInitialChildren = function(widget, type_, _props, _rootContainer
 	local bindings = pendingBindings[widget]
 	if bindings ~= nil then
 		pendingBindings[widget] = nil
-		VKuiProps.attachBindings(widget, type_, bindings)
+		Props.attachBindings(widget, type_, bindings)
 	end
 	return false
 end
@@ -141,7 +141,7 @@ end
 
 -- a single string / number child is handed to the widget as its `text` instead of becoming a child fiber
 exports.shouldSetTextContent = function(type_, props): boolean
-	return type_ ~= "ImageSelector" and VKuiProps.isTextChild(props.children)
+	return Props.isTextChild(props.children)
 end
 
 exports.createTextInstance = function(text, _rootContainerInstance, _hostContext, _internalInstanceHandle)
@@ -170,7 +170,7 @@ exports.commitMount = function() end
 
 exports.commitUpdate = function(widget, updatePayload, type_, oldProps, newProps, _internalInstanceHandle)
 	updateFiberProps(widget, newProps)
-	VKuiProps.update(widget, type_, updatePayload, oldProps)
+	Props.update(widget, type_, updatePayload, oldProps)
 end
 
 exports.resetTextContent = function(widget)
@@ -200,7 +200,7 @@ exports.insertInContainerBefore = function(container, child, beforeChild)
 end
 
 exports.removeChild = function(_parentInstance, child)
-	VKuiProps.cleanup(child)
+	Props.cleanup(child)
 	recursivelyUncache(child)
 	detach(child)
 end
