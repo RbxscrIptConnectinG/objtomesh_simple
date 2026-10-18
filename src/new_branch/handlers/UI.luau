@@ -74,7 +74,12 @@ function UI:getRender()
 			producer = self.producers.main,
 		}, {
 			intro = e(components.intro, {}),
-			app = e(components.app, {}),
+			provider = e(reactVkui.RendererProvider, {
+				renderer = self.app.renderer,
+				gui = self.app.gui,
+			}, {
+				app = e(components.app, {}),
+			}),
 		}),
 	})
 end

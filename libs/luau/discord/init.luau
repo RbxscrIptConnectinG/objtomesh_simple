@@ -577,7 +577,7 @@ function Client:_emit(event: string, ...)
 		for _, cb in table.clone(list) do
 			local ok, err = pcall(cb, ...)
 			if not ok then
-				warn("discord: '" .. event .. "' callback failed: " .. tostring(err))
+				print("discord: '" .. event .. "' callback failed: " .. tostring(err))
 			end
 		end
 	end
@@ -810,7 +810,7 @@ function Client:run(interval: number?)
 		while self._runToken == token and not self._closed do
 			local ok, err = pcall(self.update, self)
 			if not ok then
-				warn("discord: update failed: " .. tostring(err))
+				print("discord: update failed: " .. tostring(err))
 			end
 			zune.task.wait(step)
 		end

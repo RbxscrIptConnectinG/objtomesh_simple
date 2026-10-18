@@ -10,13 +10,13 @@ local discord = require("@libs/luau/discord")
 local RPC = discord.new("1560644845788463154")
 
 RPC:on("ready", function(user)
-	print("Connected to Discord as " .. tostring(user.username))
+	print(`Rich presence: {tostring(user.username)} [CONNECTED]`)
 end)
 RPC:on("disconnected", function(reason)
-	print("Discord disconnected: " .. tostring(reason) .. " (retrying)")
+	print(`Rich presence: {tostring(reason)} [DISCONNECTED]`)
 end)
 RPC:on("error", function(code, message)
-	warn("Discord error " .. tostring(code) .. ": " .. tostring(message))
+	print(`Rich presence: {tostring(code)}: {tostring(message)} [ERROR]`)
 end)
 
 RPC:setActivity({
