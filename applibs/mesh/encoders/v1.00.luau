@@ -4,7 +4,7 @@ local POSITION_SCALE = 2.0
 
 export type options = {}
 
-return function(root, objData, options: options)
+return function(root, objData, options: options): string
 	options = options or {} :: options
 
 	local mesh = root.parsers.obj(root, objData)

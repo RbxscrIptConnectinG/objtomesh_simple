@@ -4,7 +4,7 @@ export type options = {
 	autoLODs: any?,
 }
 
-return function(root, objData, options: options)
+return function(root, objData, options: options): string
 	options = options or {} :: options
 
 	local mesh = root.parsers.obj(root, objData, true, options.autoLODs)

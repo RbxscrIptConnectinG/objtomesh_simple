@@ -1,4 +1,5 @@
 local meshTypes = require("@self/types")
+local Sift = require("@pkgs/Sift")
 local DracoTypes = require("@applibs/draco/types")
 
 local mesh = {}
@@ -17,6 +18,7 @@ mesh.parsers = {
 
 	["v5.00"] = require("@self/parsers/v5.00"),
 
+	["v6.00"] = require("@self/parsers/v6.00"),
 	["v7.00"] = require("@self/parsers/v7.00"),
 }
 mesh.encoders = {
@@ -31,8 +33,21 @@ mesh.encoders = {
 	["4.01"] = require("@self/encoders/v4.01"),
 	["5.00"] = require("@self/encoders/v5.00"),
 
+	["6.00"] = require("@self/encoders/v6.00"),
 	["7.00"] = require("@self/encoders/v7.00"),
 }
+
+mesh.lodType = {
+	None = 0,
+	Unknown = 1,
+	RbxSimplifier = 2,
+	ZeuxMeshOptimizer = 3,
+}
+
+-- questionable.
+mesh.lodType = Sift.Dictionary.map(mesh.lodType, function(value: number, key: string, dictionary)
+	return key:lower()
+end)
 
 function mesh.decodeMesh(data: string): meshTypes.MeshData
 	local lineEnd = data:find("\n")

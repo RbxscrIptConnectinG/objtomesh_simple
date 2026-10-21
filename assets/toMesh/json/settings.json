@@ -2,7 +2,9 @@
     "encoderVer": "7.00",
     // 1.00, 1.01, 2.00, 3.01, 4.01, 5.00, 7.00
     "options": {
+        "lodType": "ZeuxMeshOptimizer", // None | Unknown | RbxSimplifier | ZeuxMeshOptimizer
         "autoLODs": {
+            
             "method": "QEM", // "QEM" | "MC"
             "levels": 9, // honestly, what the fuck is wrong with roblox engine?, LODs from 5 to 9 doesn't even show up even when you try and force them to
             "resolution": 0.95 // for model faces

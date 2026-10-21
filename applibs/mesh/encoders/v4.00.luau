@@ -6,7 +6,7 @@ export type options = {
 	autoLODs: any?,
 }
 
-return function(root, objData, options: options)
+return function(root, objData, options: options): string
 	options = options or {} :: options
 
 	return V4(
