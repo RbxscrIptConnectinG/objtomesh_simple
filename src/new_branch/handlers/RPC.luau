@@ -2,7 +2,7 @@ local environment = require("@applibs/environment")
 
 local RPC = {}
 RPC.__index = RPC
-RPC.discord = require("@libs/luau/discord")
+RPC.discord = require("@libs/luau/Discord")
 RPC.appId = "1560644845788463154"
 
 function RPC.new()
