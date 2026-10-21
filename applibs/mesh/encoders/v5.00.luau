@@ -2,10 +2,16 @@ local meshTypes = require("@applibs/mesh/types")
 
 export type options = {
 	autoLODs: any?,
+	lodType: string?,
 }
 
 return function(root, objData, options: options): string
 	options = options or {} :: options
+
+	-- yeah this bullshit looks like a centipede - if it was a luau code.
+	-- i only do this because of the fuckers that always forget to put uppercase letters in settings.
+
+	local lodType = root.lodType[(options.lodType or "None"):lower()]
 
 	local mesh = root.parsers.obj(root, objData, true, options.autoLODs)
 
@@ -29,7 +35,7 @@ return function(root, objData, options: options): string
 	pos += #headerText
 
 	buffer.writeu16(out, pos, headerSize)
-	buffer.writeu16(out, pos + 2, 0) -- lodType = None
+	buffer.writeu16(out, pos + 2, lodType) -- lodType
 	buffer.writeu32(out, pos + 4, numVerts)
 	buffer.writeu32(out, pos + 8, numFaces)
 	buffer.writeu16(out, pos + 12, numLodOffsets)

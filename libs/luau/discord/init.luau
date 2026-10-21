@@ -42,17 +42,6 @@
 	  detailsUrl, stateUrl           make the text lines links (newer Discord clients)
 	  instance                       boolean
 	  raw                            table merged into the JSON activity as-is, for fields not listed here
-
-	Rate limit: Discord accepts about 5 updates per 20 seconds. setActivity() only stores the latest activity;
-	update() sends it at most once per `minInterval` seconds (default 4), so calling it every frame is harmless.
-
-	Verified against the Zune 0.5.9 source (not run):
-	  * zune.net sockets can only connect to IPv4/IPv6 addresses (no unix sockets, no named pipes), so the transport has to be FFI.
-	  * JSON uses zune.serde.json; the pid comes from zune.process.pid(); directories from zune.process.env.
-	  * ffi pointer arguments accept strings / buffers (copied for the call, NUL-terminated) / pointers / nil, so no manual cstring plumbing.
-	    Output parameters must be real ffi.alloc pointers, because buffer arguments are copies.
-	  * 64-bit ints are accepted as plain numbers but RETURNED as 8-byte buffers (i64 / u64), which is handled in one helper.
-	Not tested against a real Discord client. 64-bit platforms only (size_t / ssize_t / HANDLE are 64-bit).
 ]]
 
 local ffi = zune.ffi
@@ -98,7 +87,7 @@ export type Options = {
 -- Note: the Zune encoder writes an EMPTY table as `[]`, so never send an empty table where an object is expected.
 --------------------------------------------------------------------------
 
-local json = zune.serde.json
+local json = zune.serde.json5
 local encode = json.encode
 local decode = json.decode
 

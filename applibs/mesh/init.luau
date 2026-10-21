@@ -46,7 +46,7 @@ mesh.lodType = {
 
 -- questionable.
 mesh.lodType = Sift.Dictionary.map(mesh.lodType, function(value: number, key: string, dictionary)
-	return key:lower()
+	return value, key:lower()
 end)
 
 function mesh.decodeMesh(data: string): meshTypes.MeshData

@@ -4,6 +4,7 @@ local V4 = require("./v4.01")
 
 export type options = {
 	autoLODs: any?,
+	lodType: string?,
 }
 
 return function(root, objData, options: options): string

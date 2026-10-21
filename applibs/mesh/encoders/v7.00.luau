@@ -4,11 +4,14 @@ local meshTypes = require("@applibs/mesh/types")
 export type options = {
 	draco: Draco.EncodeOptions?,
 	autoLODs: any?,
+	lodType: string?,
 }
 
 return function(root, objData, options: options): string
 	options = options or {} :: options
 
+	local lodType = root.lodType[(options.lodType or "None"):lower()]
+	print("LODDDD TYPE:", tostring(lodType))
 	local mesh = root.parsers.obj(root, objData, true, options.autoLODs)
 	local dracoBytes = Draco.encodeMeshFull(mesh.vertices, mesh.faces, options.draco)
 	local dracoSize = buffer.len(dracoBytes)
@@ -56,7 +59,7 @@ return function(root, objData, options: options): string
 	offset += 4
 	buffer.writeu32(out, offset, lodsChunkDataSize)
 	offset += 4
-	buffer.writeu16(out, offset, 0) -- lodType = None
+	buffer.writeu16(out, offset, lodType) -- lodType
 	offset += 2
 	buffer.writeu8(out, offset, numHighQualityLODs)
 	offset += 1
