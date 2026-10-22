@@ -65,10 +65,10 @@ end
 function UI:getRender()
 	return e("Frame", {
 		size = { 1, 0, 1, 0 },
-		color = theme.background,
+		--color = theme.background,
 		anchor = { 0.5, 0.5 },
 		position = { 0.5, 0, 0.5, 0 },
-		backgroundTransparency = 0,
+		backgroundTransparency = 1,
 	}, {
 
 		provider = e(reactReflex.ReflexProvider, {
@@ -90,10 +90,10 @@ function UI:run()
 		step = function(dt)
 			self.runningTime += dt
 			local curstate = self.producers.main:getState()
-			if not curstate.intro.ended and self.runningTime > 2 then
-				local alpha = (self.runningTime - 2) / 1
-				self.producers.main.setIntroTransparency(alpha)
-			end
+			--if not curstate.intro.ended and self.runningTime > 2 then
+			local alpha = (self.runningTime - 2) / 1
+			self.producers.main.setIntroTransparency(alpha)
+			--end
 		end,
 	})
 	self.app:destroy()

@@ -19,7 +19,7 @@ return reflex.createProducer({
 }, {
 	setIntroTransparency = function(state: state, value: number)
 		local nextState = sift.Dictionary.copyDeep(state)
-		nextState.intro.transparency = math.clamp(value, 0, 1)
+		nextState.intro.transparency = math.clamp(value, 0, 3)
 
 		nextState.intro.ended = nextState.intro.transparency >= 1
 

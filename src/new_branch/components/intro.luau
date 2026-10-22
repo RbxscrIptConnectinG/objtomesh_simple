@@ -17,15 +17,29 @@ return function(props: props, state: state)
 	local selected = reactReflex.useSelector(function(state)
 		return state.intro.transparency
 	end)
-	if selected >= 1 then
+	if selected >= 3 then
 		return nil
 	end
 	return e("Frame", {
-		size = { 0.8, 0, 0.8, 0 },
+		size = { 1, 0, 1, 0 },
 		color = { 0, 0, 0, 1 },
 		anchor = { 0.5, 0.5 },
 		position = { 0.5, 0, 0.5, 0 },
-		transparency = 1,
+		backgroundTransparency = math.clamp(1 - selected, 0, 1),
+		transparencyMethod = "dither",
+		shaders = {
+			["chromatic.glsl"] = {
+				order = 2,
+			},
+			["datamosh.glsl"] = {
+				order = 1,
+				amount = 1,
+				threshold = 0.6,
+				refresh = 0.05,
+				blockSize = 2,
+				smear = 2,
+			},
+		},
 	}, {
 		middle = e("Frame", {
 			size = { 1, 0, 1, 0 },
@@ -61,6 +75,20 @@ return function(props: props, state: state)
 						dominantAxis = "height",
 					},
 				},
+				transparencyMethod = "dither",
+				shaders = {
+					["chromatic.glsl"] = {
+						order = 2,
+					},
+					["datamosh.glsl"] = {
+						order = 1,
+						amount = 1,
+						threshold = 0.6,
+						refresh = 0.05,
+						blockSize = 2,
+						smear = 2,
+					},
+				},
 			}, {
 				text = e("Text", {
 					color = { 0, 0, 0, 1 },
@@ -77,6 +105,20 @@ return function(props: props, state: state)
 					font = "./assets/toMesh/fonts/Fira_Mono/FiraMono-Regular.ttf",
 					transparency = selected,
 					border = { width = 2, color = { 1, 1, 1, 0.15 - (selected * 0.15) } },
+					transparencyMethod = "dither",
+					shaders = {
+						["chromatic.glsl"] = {
+							order = 2,
+						},
+						["datamosh.glsl"] = {
+							order = 1,
+							amount = 1,
+							threshold = 0.6,
+							refresh = 0.05,
+							blockSize = 2,
+							smear = 2,
+						},
+					},
 				}),
 			}),
 		}),
@@ -114,6 +156,20 @@ return function(props: props, state: state)
 						dominantAxis = "width",
 					},
 				},
+				transparencyMethod = "dither",
+				shaders = {
+					["chromatic.glsl"] = {
+						order = 2,
+					},
+					["datamosh.glsl"] = {
+						order = 1,
+						amount = 1,
+						threshold = 0.6,
+						refresh = 0.05,
+						blockSize = 2,
+						smear = 2,
+					},
+				},
 			}),
 			SpirV = e("Image", {
 				svg = "./assets/toMesh/images/icons/trademarks/spirv.svg",
@@ -125,11 +181,25 @@ return function(props: props, state: state)
 				autoSize = "xy",
 				position = { 1, 0, 1, 0 },
 				imageTransparency = selected,
+				transparencyMethod = "dither",
 				effects = {
 					aspectRatio = {
 						value = 2,
 						type = "fitWithinMaxSize",
 						dominantAxis = "width",
+					},
+				},
+				shaders = {
+					["chromatic.glsl"] = {
+						order = 2,
+					},
+					["datamosh.glsl"] = {
+						order = 1,
+						amount = 1,
+						threshold = 0.6,
+						refresh = 0.05,
+						blockSize = 2,
+						smear = 2,
 					},
 				},
 			}),

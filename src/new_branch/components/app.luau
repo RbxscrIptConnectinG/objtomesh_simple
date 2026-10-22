@@ -26,7 +26,7 @@ return function(props: props, state: state)
 	local model = react.useMemo(function()
 		return renderer:createModel(mesh.parsers.obj(mesh, fs.readFileSync("./assets/toMesh/models/baseCube.obj")))
 	end, { renderer })
-	if selected < 1 then
+	if selected < 3 then
 		return
 	end
 
@@ -34,7 +34,7 @@ return function(props: props, state: state)
 		size = { 1, 0, 1, 0 },
 		anchor = { 0.5, 0.5 },
 		position = { 0.5, 0, 0.5, 0 },
-		transparency = 1,
+		backgroundTransparency = 1,
 		border = { width = padding / 2, color = { 1, 1, 1, 0.15 } },
 	}, {
 		padding = e("Frame", {
@@ -72,15 +72,21 @@ return function(props: props, state: state)
 				size = { 1, 0, 1, 0 },
 				anchor = { 1, 0.5 },
 				position = { 1, 0, 0.5, 0 },
+				doubleSided = false,
 				model = model,
 				modelTransparencyMethod = "dither",
 				imageTransparency = 0.9,
 				viewShaders = {
-					["chromatic.glsl"] = { order = 1 },
+					["chromatic.glsl"] = {
+						order = 2,
+					},
 					["datamosh.glsl"] = {
-						threshold = 0.1,
-						refresh = 0.1,
-						blockSize = 5,
+						order = 1,
+						amount = 1,
+						threshold = 0.6,
+						refresh = 0.05,
+						blockSize = 2,
+						smear = 2,
 					},
 				},
 				zoomable = true,
