@@ -10,8 +10,11 @@ return function(
 	targetFaceCount: number,
 	options: any
 ): ({ meshTypes.Vertex }, { meshTypes.Face })
+	local weldAttributes = options.weldAttributes ~= false
+	local NORMAL_EPS, UV_EPS = 1e-3, 1e-4
+
 	local welded: { meshTypes.Vertex } = {}
-	local grid: { [number]: { [number]: { [number]: number } } } = {}
+	local grid: { [number]: { [number]: { [number]: { number } } } } = {} -- position bucket -> welded indices
 	local cornerToWelded: { number } = table.create(#baseVerts)
 
 	for i, v in baseVerts do
@@ -27,13 +30,36 @@ return function(
 			gy = {}
 			gx[qy] = gy
 		end
-		local idx = gy[qz]
-		if not idx then
-			table.insert(welded, v)
-			idx = #welded
-			gy[qz] = idx
+		local bucket = gy[qz]
+		if not bucket then
+			bucket = {}
+			gy[qz] = bucket
 		end
-		cornerToWelded[i] = idx
+
+		local found: number
+		for _, wi in bucket do
+			if not weldAttributes then
+				found = wi
+				break
+			end
+			local w = welded[wi]
+			if
+				math.abs(w.nx - v.nx) <= NORMAL_EPS
+				and math.abs(w.ny - v.ny) <= NORMAL_EPS
+				and math.abs(w.nz - v.nz) <= NORMAL_EPS
+				and math.abs(w.tu - v.tu) <= UV_EPS
+				and math.abs(w.tv - v.tv) <= UV_EPS
+			then
+				found = wi
+				break
+			end
+		end
+		if not found then
+			table.insert(welded, v)
+			found = #welded
+			table.insert(bucket, found :: any)
+		end
+		cornerToWelded[i] = found
 	end
 
 	local weldedFaces: { meshTypes.Face } = table.create(#baseFaces)
@@ -44,7 +70,16 @@ return function(
 		end
 	end
 
-	local simplified = meshopt.simplify(welded, weldedFaces, targetFaceCount * 2, options)
+	local simplifiedVerts, simplified = meshopt.simplify(welded, weldedFaces, targetFaceCount * 3, {
+		targetError = options.targetError,
+		lockBorder = options.lockBorder,
+		regularize = options.regularize,
+		prune = options.prune,
+		permissive = options.permissive,
+		uvWeight = options.uvWeight,
+		normalWeight = options.normalWeight,
+		updateVertices = options.updateVertices,
+	})
 
 	local outVerts: { meshTypes.Vertex } = {}
 	local outFaces: { meshTypes.Face } = table.create(#simplified)
@@ -55,7 +90,7 @@ return function(
 		if existing then
 			return existing
 		end
-		table.insert(outVerts, welded[v])
+		table.insert(outVerts, simplifiedVerts[v])
 		local idx = #outVerts
 		emitted[v] = idx
 		return idx

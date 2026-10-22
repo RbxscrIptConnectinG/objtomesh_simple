@@ -13,18 +13,55 @@
             // USE EITHER 0.8 OR 0.7
             "methodOptions": {
                 "ZeuxMeshOptimizer": {
+
+	                // Weld corners by position + normal + uv (true, default) so UV seams and
+	                // hard edges stay intact, or by position only (false: smoother LODs but
+	                // seams/normals are taken from the first corner at each position).
+                    // Default false.
+	                "weldAttributes": false,
+
+                    // true: collapsed vertices are moved to better positions and their
+                    // UVs/normals are re-solved to match (best UV quality, returns modified
+                    // copies). false: vertex data stays exactly as given and only the
+                    // triangle list shrinks.
+                    // Default true.
+                    "updateVertices": true,
+
+                    // Keep vertices on open mesh boundaries in place.
+                    // Default true.
+                    "lockBorder": true,
+
+                    // More regular triangle sizes/shapes, at some cost to fidelity.
+                    // Default false.
+                    "regularize": false,
+
+                    // Remove small disconnected parts while simplifying.
+                    // Default false.
+                    "prune": false,
+
+                    // Allow collapses across attribute seams (needed if the mesh is so
+                    // faceted/seamy that simplification gets stuck).
+                    // Default false.
+                    "permissive": false,
+
+                    // Importance of UV preservation vs position. Higher = less UV
+                    // stretching/"melting", at the cost of position accuracy.
+                    // 0 ignores UVs entirely.
+                    // Default 2.
+                    "uvWeight": 2,
+
+                    // Same for vertex normals (shading). 
+                    // 0 ignores normals.
+                    // Default 1.
+                    "normalWeight": 1,
+
                     // Error tolerance relative to mesh extents, e.g. 0.01 = 1% deformation.
-                    // 1.0 (effectively "no error limit") so targetIndexCount is
-                    // the only thing that decides how far simplification goes; lower this
-                    // if you want simplification to stop early rather than risk visible
-                    // distortion.
-                    "targetError": 1,
-                    // Locks vertices on open mesh boundaries in place so open rims/seams
-                    // (e.g. an unclosed bottom on an OBJ) resist caving in during
-                    // simplification, rather than shrinking toward the mesh's centroid.
-                    "lockBorder": true
+                    // Default 1.0 (effectively no limit: targetIndexCount decides).
+                    "targetError": 1
                 },
+                // NULL [no options]
                 "QEM": {},
+                // NULL [no options]
                 "MC": {}
             }
         }
