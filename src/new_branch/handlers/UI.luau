@@ -49,6 +49,7 @@ function UI.new(root: types.App)
 			libraryPath = "./libs/bin/shaderc_shared.dll",
 			shaders = "./assets/toMesh/bin/shaders",
 		},
+		effectDir = "./assets/toMesh/bin/shaders/addons/effects",
 		vsync = true,
 		font = "./assets/toMesh/fonts/Inconsolata/Inconsolata-VariableFont_wdth,wght.ttf",
 	})

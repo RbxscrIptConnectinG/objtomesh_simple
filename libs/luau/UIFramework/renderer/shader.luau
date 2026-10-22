@@ -20,7 +20,6 @@
 		ui.createApp({ shaders = { libraryPath = "libs/shaderc_shared.dll", shaders = "path/to/shaders" } })    -- loads ui.vert ui.frag model.vert model.frag model_dither.frag
 		ui.createApp({ shaders = { shaders = { modelFrag = "my/water.frag", modelVert = "my/model.vert" } } })  -- any subset, per file
 
-	Untested on real systems (written from the shaderc C API header).
 ]]
 
 local ffi = zune.ffi

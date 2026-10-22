@@ -15,12 +15,12 @@
 		r:destroy()
 
 	Coordinates are framebuffer pixels, origin top-left. Draw order == call order.
-	NOT TESTED on real hardware - see the notes in README.md.
 ]]
 
 local ffi = zune.ffi
 local vk = require("@self/vk")
 local shaderLoader = require("@self/shader")
+local fxLoader = require("@self/fx")
 local imagelib = require("./image")
 local C = vk.C
 
@@ -35,6 +35,7 @@ export type Options = {
 	appName: string?,
 	clearColor: { number }?, -- {r, g, b, a}
 	maxVertices: number?, -- per-frame UI vertex capacity (default 65536 = ~10k quads)
+	effectDir: string?, -- extra folder searched for effect shaders (`shaders` / `viewShaders` props); "shaders/effects" beside renderer.luau is always searched
 	shaders: any?, -- "folder" (default: "shaders" beside renderer.luau) | { uiVert/uiFrag/modelVert/modelFrag/modelFragDither/uiFragDither = "file.vert|.frag|.spv" | SPIR-V buffer } | { libraryPath = shaderc library path, shaders = either of the former }
 }
 
@@ -458,6 +459,7 @@ function Renderer.new(glfw: any, window: any, options: Options?): any
 	end
 	self:_createRenderPass()
 	self:_createFramebuffers()
+	self.effectDirOpt = o.effectDir
 	self:_createPipelines(o.shaders)
 
 	-- per-frame UI vertex buffers + CPU staging
@@ -468,6 +470,7 @@ function Renderer.new(glfw: any, window: any, options: Options?): any
 	end
 	self.cpu = buffer.create(self.maxVerts * UI_STRIDE)
 	self.vcount, self.cmds, self.clipStack = 0, {}, {}
+	self.root, self.layerStack = self.cmds, {}
 
 	-- persistent per-frame structs (updated each frame)
 	local p = self.persist
@@ -498,6 +501,23 @@ function Renderer.new(glfw: any, window: any, options: Options?): any
 		pImageIndices = self.idxOut,
 	}, p)
 	self.clearRect = vk.new("VkClearRect", { layerCount = 1 }, p)
+	-- effect layers (shaders / viewShaders props)
+	self.layerClear = p:alloc(32) -- colour (0,0,0,0), depth 1.0, stencil 0
+	for i = 0, 3 do
+		self.layerClear:writef32(i * 4, 0.0)
+	end
+	self.layerClear:writef32(16, 1.0)
+	self.layerClear:writeu32(20, 0)
+	self.rpBeginAux = vk.new("VkRenderPassBeginInfo", {
+		sType = C.ST_RENDER_PASS_BEGIN_INFO,
+		renderPass = self.layerPass,
+		clearValueCount = 2,
+		pClearValues = self.layerClear,
+	}, p)
+	self.setArr2 = ffi.alloc(16, 8)
+	self.fxPC = buffer.create(fxLoader.PUSH_SIZE)
+	self.fxCache, self.fxFree, self.fxAll, self.fxHistory = {}, {}, {}, {}
+	self.fxTime, self.fxDt, self.fxFrame, self.fxFrameNo, self.fxMouse = 0, 0, 0, 0, { 0, 0 }
 
 	-- 1x1 white texture for untextured quads
 	local white = buffer.create(4)
@@ -628,6 +648,7 @@ function Renderer:_destroySwapchain()
 	if not sc then
 		return
 	end
+	self:_destroyFxTargets() -- window-sized, framebuffers refer to the depth view
 	for _, fb in sc.fbs do
 		L.vkDestroyFramebuffer(dev, fb, nil)
 	end
@@ -658,9 +679,11 @@ end
 -- Render pass + pipelines
 --------------------------------------------------------------------------
 
-function Renderer:_createRenderPass()
+-- Three compatible-where-needed passes: the swapchain pass, an offscreen pass with the same attachments (layers; ends in
+-- SHADER_READ_ONLY so the result can be sampled) and a colour-only pass for the effect shaders.
+function Renderer:_makePass(colorFinal: number, depth: boolean): any
 	local a = vk.arena()
-	local attachments = vk.newArray("VkAttachmentDescription", {
+	local descs: { { [string]: number } } = {
 		{
 			format = self.format,
 			samples = 1,
@@ -669,9 +692,11 @@ function Renderer:_createRenderPass()
 			stencilLoadOp = 2,
 			stencilStoreOp = 1,
 			initialLayout = C.LAYOUT_UNDEFINED,
-			finalLayout = C.LAYOUT_PRESENT_SRC,
+			finalLayout = colorFinal,
 		},
-		{
+	}
+	if depth then
+		table.insert(descs, {
 			format = self.depthFormat,
 			samples = 1,
 			loadOp = 1,
@@ -680,38 +705,58 @@ function Renderer:_createRenderPass()
 			stencilStoreOp = 1,
 			initialLayout = C.LAYOUT_UNDEFINED,
 			finalLayout = C.LAYOUT_DEPTH_ATTACHMENT,
+		})
+	end
+	local attachments = vk.newArray("VkAttachmentDescription", descs, a)
+	local colorRef = vk.new("VkAttachmentReference", { attachment = 0, layout = C.LAYOUT_COLOR_ATTACHMENT }, a)
+	local sub: { [string]: any } = { pipelineBindPoint = 0, colorAttachmentCount = 1, pColorAttachments = colorRef }
+	if depth then
+		sub.pDepthStencilAttachment =
+			vk.new("VkAttachmentReference", { attachment = 1, layout = C.LAYOUT_DEPTH_ATTACHMENT }, a)
+	end
+	local subpass = vk.new("VkSubpassDescription", sub, a)
+	local out = C.STAGE_COLOR_ATTACHMENT_OUTPUT
+	local early = C.STAGE_EARLY_FRAGMENT_TESTS
+	local deps = vk.newArray("VkSubpassDependency", {
+		-- before: wait for earlier uses of the images (previous passes, shaders still reading them), make them writable
+		{
+			srcSubpass = C.SUBPASS_EXTERNAL,
+			dstSubpass = 0,
+			srcStageMask = out + early + 0x200 + C.STAGE_FRAGMENT_SHADER,
+			dstStageMask = out + early,
+			srcAccessMask = C.ACCESS_COLOR_WRITE + C.ACCESS_DEPTH_WRITE,
+			dstAccessMask = C.ACCESS_COLOR_WRITE + C.ACCESS_DEPTH_WRITE,
+		},
+		-- after: the colour result may be sampled by later fragment shaders
+		{
+			srcSubpass = 0,
+			dstSubpass = C.SUBPASS_EXTERNAL,
+			srcStageMask = out,
+			dstStageMask = C.STAGE_FRAGMENT_SHADER,
+			srcAccessMask = C.ACCESS_COLOR_WRITE,
+			dstAccessMask = C.ACCESS_SHADER_READ,
 		},
 	}, a)
-	local colorRef = vk.new("VkAttachmentReference", { attachment = 0, layout = C.LAYOUT_COLOR_ATTACHMENT }, a)
-	local depthRef = vk.new("VkAttachmentReference", { attachment = 1, layout = C.LAYOUT_DEPTH_ATTACHMENT }, a)
-	local subpass = vk.new("VkSubpassDescription", {
-		pipelineBindPoint = 0,
-		colorAttachmentCount = 1,
-		pColorAttachments = colorRef,
-		pDepthStencilAttachment = depthRef,
-	}, a)
-	local stages = C.STAGE_COLOR_ATTACHMENT_OUTPUT + C.STAGE_EARLY_FRAGMENT_TESTS
-	local dep = vk.new("VkSubpassDependency", {
-		srcSubpass = C.SUBPASS_EXTERNAL,
-		dstSubpass = 0,
-		srcStageMask = stages,
-		dstStageMask = stages,
-		srcAccessMask = 0,
-		dstAccessMask = C.ACCESS_COLOR_WRITE + C.ACCESS_DEPTH_WRITE,
-	}, a)
-	self.renderPass = self:_create(
+	local pass = self:_create(
 		"vkCreateRenderPass",
 		vk.new("VkRenderPassCreateInfo", {
 			sType = C.ST_RENDER_PASS_CREATE_INFO,
-			attachmentCount = 2,
+			attachmentCount = #descs,
 			pAttachments = attachments,
 			subpassCount = 1,
 			pSubpasses = subpass,
-			dependencyCount = 1,
-			pDependencies = dep,
+			dependencyCount = 2,
+			pDependencies = deps,
 		}, a)
 	)
 	a:free()
+	return pass
+end
+
+function Renderer:_createRenderPass()
+	self.renderPass = self:_makePass(C.LAYOUT_PRESENT_SRC, true)
+	self.layerPass = self:_makePass(C.LAYOUT_SHADER_READ_ONLY, true)
+	self.fxPass = self:_makePass(C.LAYOUT_SHADER_READ_ONLY, false)
 end
 
 function Renderer:_shaderModule(code: any): any
@@ -854,6 +899,106 @@ function Renderer:_createPipeline(
 	return pipeline
 end
 
+-- Full-screen-triangle pipeline without vertex input (effects and layer compositing). premult: blend with ONE, ONE_MINUS_SRC_ALPHA;
+-- withDepth: the pass has a depth attachment (depth test off).
+function Renderer:_createFxPipeline(vs: any, fs: any, layout: any, pass: any, premult: boolean, withDepth: boolean): any
+	local a = vk.arena()
+	local entry = a:cstr("main")
+	local stages = vk.newArray("VkPipelineShaderStageCreateInfo", {
+		{ sType = C.ST_PIPELINE_SHADER_STAGE, stage = C.SHADER_VERTEX, module = vs, pName = entry },
+		{ sType = C.ST_PIPELINE_SHADER_STAGE, stage = C.SHADER_FRAGMENT, module = fs, pName = entry },
+	}, a)
+	local vertexInput = vk.new("VkPipelineVertexInputStateCreateInfo", { sType = C.ST_PIPELINE_VERTEX_INPUT }, a)
+	local assembly =
+		vk.new("VkPipelineInputAssemblyStateCreateInfo", { sType = C.ST_PIPELINE_INPUT_ASSEMBLY, topology = 3 }, a)
+	local viewport = vk.new(
+		"VkPipelineViewportStateCreateInfo",
+		{ sType = C.ST_PIPELINE_VIEWPORT, viewportCount = 1, scissorCount = 1 },
+		a
+	)
+	local raster = vk.new(
+		"VkPipelineRasterizationStateCreateInfo",
+		{ sType = C.ST_PIPELINE_RASTERIZATION, polygonMode = 0, cullMode = 0, frontFace = 0, lineWidth = 1.0 },
+		a
+	)
+	local ms = vk.new(
+		"VkPipelineMultisampleStateCreateInfo",
+		{ sType = C.ST_PIPELINE_MULTISAMPLE, rasterizationSamples = 1 },
+		a
+	)
+	local att = vk.new(
+		"VkPipelineColorBlendAttachmentState",
+		if premult
+			then {
+				blendEnable = 1,
+				srcColorBlendFactor = 1,
+				dstColorBlendFactor = 7,
+				colorBlendOp = 0,
+				srcAlphaBlendFactor = 1,
+				dstAlphaBlendFactor = 7,
+				alphaBlendOp = 0,
+				colorWriteMask = 15,
+			}
+			else { blendEnable = 0, colorWriteMask = 15 },
+		a
+	)
+	local cb = vk.new(
+		"VkPipelineColorBlendStateCreateInfo",
+		{ sType = C.ST_PIPELINE_COLOR_BLEND, attachmentCount = 1, pAttachments = att },
+		a
+	)
+	local dyn = vk.new("VkPipelineDynamicStateCreateInfo", {
+		sType = C.ST_PIPELINE_DYNAMIC,
+		dynamicStateCount = 2,
+		pDynamicStates = vk.u32Array({ 0, 1 }, a),
+	}, a)
+	local fields: { [string]: any } = {
+		sType = C.ST_GRAPHICS_PIPELINE_CREATE_INFO,
+		stageCount = 2,
+		pStages = stages,
+		pVertexInputState = vertexInput,
+		pInputAssemblyState = assembly,
+		pViewportState = viewport,
+		pRasterizationState = raster,
+		pMultisampleState = ms,
+		pColorBlendState = cb,
+		pDynamicState = dyn,
+		layout = layout,
+		renderPass = pass,
+		subpass = 0,
+		basePipelineIndex = -1,
+	}
+	if withDepth then
+		fields.pDepthStencilState = vk.new(
+			"VkPipelineDepthStencilStateCreateInfo",
+			{ sType = C.ST_PIPELINE_DEPTH_STENCIL, maxDepthBounds = 1.0 },
+			a
+		)
+	end
+	vk.check(
+		self.L.vkCreateGraphicsPipelines(
+			self.dev,
+			nil,
+			1,
+			vk.new("VkGraphicsPipelineCreateInfo", fields, a),
+			nil,
+			self.out
+		),
+		"vkCreateGraphicsPipelines (effect)"
+	)
+	local pipeline = self.out:readptr(0)
+	a:free()
+	return pipeline
+end
+
+-- spirv: compiled fragment shader of an effect (see fx.luau)
+function Renderer:_createEffectPipeline(spirv: any): any
+	local fs = self:_shaderModule(spirv)
+	local pipeline = self:_createFxPipeline(self.mods.fxVert, fs, self.fxLayout, self.fxPass, false, false)
+	self.L.vkDestroyShaderModule(self.dev, fs, nil)
+	return pipeline
+end
+
 local SHADER_FILES = {
 	uiVert = "vert/ui.vert",
 	uiFrag = "frag/ui.frag",
@@ -863,6 +1008,8 @@ local SHADER_FILES = {
 	uiFragDither = "frag/ui_dither.frag",
 	highlightVert = "vert/highlight.vert",
 	highlightFrag = "frag/highlight.frag",
+	fxVert = "addons/fx.vert",
+	fxComposite = "addons/fx_composite.frag",
 }
 
 -- Folder of the stock shader sources: "shaders" next to this file (found through the module's own path).
@@ -903,7 +1050,14 @@ function Renderer:_createPipelines(overrides: any)
 		uiFragDither = self:_shaderModule(code("uiFragDither")),
 		highlightVert = self:_shaderModule(code("highlightVert")),
 		highlightFrag = self:_shaderModule(code("highlightFrag")),
+		fxVert = self:_shaderModule(code("fxVert")),
+		fxComposite = self:_shaderModule(code("fxComposite")),
 	}
+	self.fxDirs = {}
+	if self.effectDirOpt then
+		table.insert(self.fxDirs, self.effectDirOpt)
+	end
+	table.insert(self.fxDirs, zune.fs.path.join(dir, "effects"))
 
 	self.uiLayout = self:_create(
 		"vkCreatePipelineLayout",
@@ -943,6 +1097,24 @@ function Renderer:_createPipelines(overrides: any)
 		{ location = 1, binding = 0, format = C.FORMAT_R32G32_SFLOAT, offset = 8 },
 		{ location = 2, binding = 0, format = C.FORMAT_R8G8B8A8_UNORM, offset = 16 },
 	}, false, false)
+	-- effect shaders: set 0 = the picture (source), set 1 = this effect's previous output; fragment push constants carry builtins + settings
+	self.fxLayout = self:_create(
+		"vkCreatePipelineLayout",
+		vk.new("VkPipelineLayoutCreateInfo", {
+			sType = C.ST_PIPELINE_LAYOUT_CREATE_INFO,
+			setLayoutCount = 2,
+			pSetLayouts = vk.ptrArray({ self.dsl, self.dsl }, a),
+			pushConstantRangeCount = 1,
+			pPushConstantRanges = vk.newArray(
+				"VkPushConstantRange",
+				{ { stageFlags = C.SHADER_FRAGMENT, offset = 0, size = fxLoader.PUSH_SIZE } },
+				a
+			),
+		}, a)
+	)
+	-- draws a finished layer into the current pass (premultiplied alpha blending)
+	self.fxCompositePipeline =
+		self:_createFxPipeline(self.mods.fxVert, self.mods.fxComposite, self.uiLayout, self.renderPass, true, true)
 	local modelAttrs = {
 		{ location = 0, binding = 0, format = C.FORMAT_R32G32B32_SFLOAT, offset = 0 },
 		{ location = 1, binding = 0, format = C.FORMAT_R32G32B32_SFLOAT, offset = 12 },
@@ -1151,7 +1323,8 @@ end
 
 -- Rasterizes SVG markup into a texture of width x height pixels (omit one for the aspect ratio, both for the intrinsic size).
 function Renderer:loadSvg(markup: string | buffer, width: number?, height: number?, options: { [string]: any }?): any
-	local w, h, rgba = imagelib.libs.svg.rasterize(markup, width, height, options)
+	local svg = imagelib.libs.svg
+	local w, h, rgba = svg.rasterize(markup, width, height, options)
 	return self:createTexture(w, h, rgba)
 end
 
@@ -1309,7 +1482,9 @@ function Renderer:beginFrame(): boolean
 	self.imageIndex = self.idxOut:readu32(0)
 	self.vcount, self.cur = 0, nil
 	self.dither = false
-	table.clear(self.cmds)
+	self.cmds = self.root
+	table.clear(self.root)
+	table.clear(self.layerStack)
 	table.clear(self.clipStack)
 	self.clip = { 0, 0, self.width, self.height }
 	self.frameActive = true
@@ -1528,40 +1703,242 @@ function Renderer:_drawHighlight(cb: any, cmd: any, viewW: number, viewH: number
 	end
 end
 
-function Renderer:endFrame()
-	if not self.frameActive then
+--------------------------------------------------------------------------
+-- Effect layers (shaders / viewShaders)
+--------------------------------------------------------------------------
+
+-- Everything drawn between beginLayer and endLayer goes to its own window-sized image (premultiplied alpha), the effect shaders in
+-- `effects` (list from fx.build, in order) are run over it inside `rect`, and the result is drawn into the picture at the same
+-- place in the draw order. key: any table that identifies the element (keeps the previous-frame image of the effects).
+function Renderer:beginLayer(rect: { number }, effects: { any }, key: any)
+	local node = { kind = "layer", rect = rect, effects = effects, key = key, clip = self.clip, children = {} }
+	table.insert(self.cmds, node)
+	table.insert(self.layerStack, self.cmds)
+	self.cmds = node.children
+	self.cur = nil
+end
+
+function Renderer:endLayer()
+	local parent = table.remove(self.layerStack)
+	if parent then
+		self.cmds = parent
+	end
+	self.cur = nil
+end
+
+-- Parses a `shaders` / `viewShaders` table into the ordered effect list for beginLayer (empty list = nothing to do).
+function Renderer:effectsFor(shaders: any): { any }
+	return fxLoader.build(self, shaders)
+end
+
+-- Called by the UI once per frame: feeds the `time`, `dt`, `mouse` and `frame` of the effect shaders.
+function Renderer:setEffectInput(dt: number, mouseX: number?, mouseY: number?)
+	self.fxTime += dt
+	self.fxDt = dt
+	self.fxFrame += 1
+	self.fxMouse = { mouseX or 0, mouseY or 0 }
+end
+
+function Renderer:_newTarget(): any
+	local a = vk.arena()
+	local W, H = self.width, self.height
+	local img = self:_makeImage(W, H, self.format, C.IMAGE_COLOR_ATTACHMENT + C.IMAGE_SAMPLED, C.MEM_DEVICE_LOCAL)
+	local view = self:_makeView(img.image, self.format, C.ASPECT_COLOR)
+	local fbLayer = self:_create(
+		"vkCreateFramebuffer",
+		vk.new("VkFramebufferCreateInfo", {
+			sType = C.ST_FRAMEBUFFER_CREATE_INFO,
+			renderPass = self.layerPass,
+			attachmentCount = 2,
+			pAttachments = vk.ptrArray({ view, self.sc.depthView }, a),
+			width = W,
+			height = H,
+			layers = 1,
+		}, a)
+	)
+	local fbFx = self:_create(
+		"vkCreateFramebuffer",
+		vk.new("VkFramebufferCreateInfo", {
+			sType = C.ST_FRAMEBUFFER_CREATE_INFO,
+			renderPass = self.fxPass,
+			attachmentCount = 1,
+			pAttachments = vk.ptrArray({ view }, a),
+			width = W,
+			height = H,
+			layers = 1,
+		}, a)
+	)
+	a:free()
+	local t = { image = img, view = view, fbLayer = fbLayer, fbFx = fbFx, set = self:_makeSet(view, self.sampler) }
+	self.fxAll[t] = true
+	return t
+end
+
+function Renderer:_destroyTarget(t: any)
+	local L, dev = self.L, self.dev
+	local a = vk.arena()
+	L.vkFreeDescriptorSets(dev, self.descPool, 1, vk.ptrArray({ t.set }, a))
+	a:free()
+	L.vkDestroyFramebuffer(dev, t.fbLayer, nil)
+	L.vkDestroyFramebuffer(dev, t.fbFx, nil)
+	L.vkDestroyImageView(dev, t.view, nil)
+	L.vkDestroyImage(dev, t.image.image, nil)
+	L.vkFreeMemory(dev, t.image.memory, nil)
+	self.fxAll[t] = nil
+end
+
+-- Callers make sure the GPU is idle (swapchain rebuild, destroy).
+function Renderer:_destroyFxTargets()
+	for t in self.fxAll do
+		self:_destroyTarget(t)
+	end
+	table.clear(self.fxFree)
+	table.clear(self.fxHistory)
+end
+
+function Renderer:_acquireTarget(): any
+	return table.remove(self.fxFree) or self:_newTarget()
+end
+
+function Renderer:_releaseTarget(t: any)
+	table.insert(self.fxFree, t)
+end
+
+-- Per element and effect: two images (this frame's output / last frame's output), cleared to transparent when created.
+function Renderer:_history(key: any, index: number, path: string): any
+	local h = self.fxHistory[key]
+	if not h then
+		h = { entries = {}, used = 0 }
+		self.fxHistory[key] = h
+	end
+	h.used = self.fxFrameNo
+	local id = `{index}:{path}`
+	local e = h.entries[id]
+	if not e then
+		e = { t = { self:_newTarget(), self:_newTarget() }, cur = 1 }
+		h.entries[id] = e
+		local L = self.L
+		self:_oneTime(function(cb)
+			for _, t in e.t do
+				self:_beginPass(cb, self.fxPass, t.fbFx, 1)
+				L.vkCmdEndRenderPass(cb)
+			end
+		end)
+	end
+	return e
+end
+
+-- History of elements that were not drawn for a while is freed (checked every 300 frames).
+function Renderer:_sweepHistory()
+	local stale = {}
+	for key, h in self.fxHistory do
+		if self.fxFrameNo - h.used > 300 then
+			table.insert(stale, key)
+		end
+	end
+	if #stale == 0 then
 		return
 	end
-	self.frameActive = false
+	self.L.vkDeviceWaitIdle(self.dev)
+	for _, key in stale do
+		for _, e in self.fxHistory[key].entries do
+			for _, t in e.t do
+				self:_destroyTarget(t)
+			end
+		end
+		self.fxHistory[key] = nil
+	end
+end
+
+function Renderer:_beginPass(cb: any, pass: any, framebuffer: any, clearCount: number)
+	vk.set(self.rpBeginAux, "VkRenderPassBeginInfo", {
+		renderPass = pass,
+		framebuffer = framebuffer,
+		width = self.width,
+		height = self.height,
+		clearValueCount = clearCount,
+		pClearValues = self.layerClear,
+	})
+	self.L.vkCmdBeginRenderPass(cb, self.rpBeginAux, 0)
+	self:_setViewport(cb, 0, 0, self.width, self.height)
+	self:_setScissor(cb, 0, 0, self.width, self.height)
+end
+
+-- Renders one layer (its children were prepared first) and runs its effect chain; node.result is the image to draw.
+function Renderer:_renderLayer(cb: any, node: any)
+	local L, W, H = self.L, self.width, self.height
+	local r, c = node.rect, node.clip
+	local x0, y0 = math.max(r[1], c[1]), math.max(r[2], c[2])
+	local x1, y1 = math.min(r[1] + r[3], c[1] + c[3]), math.min(r[2] + r[4], c[2] + c[4])
+	local sx, sy, sw, sh = clipToInts({ x0, y0, math.max(0, x1 - x0), math.max(0, y1 - y0) }, W, H)
+	if sw <= 0 or sh <= 0 then
+		return
+	end
+	node.scissor = { sx, sy, sw, sh }
+
+	local layer = self:_acquireTarget()
+	self:_beginPass(cb, self.layerPass, layer.fbLayer, 2)
+	self:_replay(cb, node.children)
+	L.vkCmdEndRenderPass(cb)
+	for _, child in node.children do -- their pictures have been consumed
+		if child.kind == "layer" and child.pooled then
+			child.pooled = false
+			self:_releaseTarget(child.result)
+		end
+	end
+
+	local src, owned = layer, layer
+	local pc = self.fxPC
+	buffer.writef32(pc, 0, W)
+	buffer.writef32(pc, 4, H)
+	buffer.writef32(pc, 8, self.fxTime)
+	buffer.writef32(pc, 12, self.fxDt)
+	buffer.writef32(pc, 16, self.fxMouse[1])
+	buffer.writef32(pc, 20, self.fxMouse[2])
+	buffer.writeu32(pc, 24, self.fxFrame)
+	for index, e in node.effects do
+		local out, hist, prevSet
+		if e.fx.usesPrevious then
+			hist = self:_history(node.key, index, e.path)
+			out, prevSet = hist.t[hist.cur], hist.t[3 - hist.cur].set
+		else
+			out, prevSet = self:_acquireTarget(), self.white.set
+		end
+		fxLoader.pack(pc, e.fx, e.values)
+		self:_beginPass(cb, self.fxPass, out.fbFx, 1)
+		self:_setScissor(cb, sx, sy, sw, sh)
+		L.vkCmdBindPipeline(cb, 0, e.fx.pipeline)
+		self.setArr2:writeptr(0, src.set)
+		self.setArr2:writeptr(8, prevSet)
+		L.vkCmdBindDescriptorSets(cb, 0, self.fxLayout, 0, 2, self.setArr2, 0, nil)
+		L.vkCmdPushConstants(cb, self.fxLayout, C.SHADER_FRAGMENT, 0, fxLoader.PUSH_SIZE, pc)
+		L.vkCmdDraw(cb, 3, 1, 0, 0)
+		L.vkCmdEndRenderPass(cb)
+		if hist then
+			hist.cur = 3 - hist.cur
+		end
+		if owned then
+			self:_releaseTarget(owned)
+		end
+		src, owned = out, if hist then nil else out
+	end
+	node.result, node.pooled = src, owned ~= nil
+end
+
+function Renderer:_prepareLayers(cb: any, list: { any })
+	for _, cmd in list do
+		if cmd.kind == "layer" then
+			self:_prepareLayers(cb, cmd.children)
+			self:_renderLayer(cb, cmd)
+		end
+	end
+end
+
+-- Records the commands of one list into the open render pass.
+function Renderer:_replay(cb: any, list: { any })
 	local L = self.L
-	local f = self.frame
-	local cb = self.cmdBufs[f]
 	local W, H = self.width, self.height
-	local sc = self.sc
-	local ui = self.uiBufs[f]
-
-	for _, hook in self.preSubmit do
-		hook()
-	end
-
-	if self.vcount > 0 then
-		ui.mapped:write(0, self.cpu, 0, self.vcount * UI_STRIDE)
-	end
-
-	-- clear values: colour + depth(1.0, 0)
-	local cv = self.clearValues
-	for i = 1, 4 do
-		cv:writef32((i - 1) * 4, self.clearColor[i])
-	end
-	cv:writef32(16, 1.0)
-	cv:writeu32(20, 0)
-
-	vk.check(L.vkResetCommandBuffer(cb, 0), "vkResetCommandBuffer")
-	vk.check(L.vkBeginCommandBuffer(cb, self.beginInfo), "vkBeginCommandBuffer")
-	vk.set(self.rpBegin, "VkRenderPassBeginInfo", { framebuffer = sc.fbs[self.imageIndex + 1], width = W, height = H })
-	L.vkCmdBeginRenderPass(cb, self.rpBegin, 0)
-	self:_setViewport(cb, 0, 0, W, H)
-	self:_setScissor(cb, 0, 0, W, H)
+	local ui = self.uiBufs[self.frame]
 
 	local bound: string? = nil
 	local boundTex: any = nil
@@ -1582,9 +1959,19 @@ function Renderer:endFrame()
 		L.vkCmdBindVertexBuffers(cb, 0, 1, self.bufArr, self.offArr)
 	end
 
-	for _, cmd in self.cmds do
+	for _, cmd in list do
 		local cx, cy, cw, ch = clipToInts(cmd.clip, W, H)
-		if cw > 0 and ch > 0 then
+		if cmd.kind == "layer" then
+			local s = cmd.scissor
+			if cmd.result and s then
+				bound, boundTex = "composite", nil
+				L.vkCmdBindPipeline(cb, 0, self.fxCompositePipeline)
+				self:_setScissor(cb, s[1], s[2], s[3], s[4])
+				self.setArr:writeptr(0, cmd.result.set)
+				L.vkCmdBindDescriptorSets(cb, 0, self.uiLayout, 0, 1, self.setArr, 0, nil)
+				L.vkCmdDraw(cb, 3, 1, 0, 0)
+			end
+		elseif cw > 0 and ch > 0 then
 			if cmd.kind == "quads" then
 				if cmd.count > 0 then
 					useUI(cmd.dither)
@@ -1633,9 +2020,61 @@ function Renderer:endFrame()
 			end
 		end
 	end
+end
+
+function Renderer:endFrame()
+	if not self.frameActive then
+		return
+	end
+	self.frameActive = false
+	self.cmds = self.root -- in case a beginLayer was left open
+	table.clear(self.layerStack)
+	local L = self.L
+	local f = self.frame
+	local cb = self.cmdBufs[f]
+	local W, H = self.width, self.height
+	local sc = self.sc
+	local ui = self.uiBufs[f]
+
+	for _, hook in self.preSubmit do
+		hook()
+	end
+
+	if self.vcount > 0 then
+		ui.mapped:write(0, self.cpu, 0, self.vcount * UI_STRIDE)
+	end
+
+	-- clear values: colour + depth(1.0, 0)
+	local cv = self.clearValues
+	for i = 1, 4 do
+		cv:writef32((i - 1) * 4, self.clearColor[i])
+	end
+	cv:writef32(16, 1.0)
+	cv:writeu32(20, 0)
+
+	vk.check(L.vkResetCommandBuffer(cb, 0), "vkResetCommandBuffer")
+	vk.check(L.vkBeginCommandBuffer(cb, self.beginInfo), "vkBeginCommandBuffer")
+	self:_prepareLayers(cb, self.root) -- offscreen passes (innermost first) come before the main pass
+	vk.set(self.rpBegin, "VkRenderPassBeginInfo", { framebuffer = sc.fbs[self.imageIndex + 1], width = W, height = H })
+	L.vkCmdBeginRenderPass(cb, self.rpBegin, 0)
+	self:_setViewport(cb, 0, 0, W, H)
+	self:_setScissor(cb, 0, 0, W, H)
+
+	self:_replay(cb, self.root)
 
 	L.vkCmdEndRenderPass(cb)
+	for _, cmd in self.root do
+		if cmd.kind == "layer" and cmd.pooled then
+			cmd.pooled = false
+			self:_releaseTarget(cmd.result)
+		end
+	end
 	vk.check(L.vkEndCommandBuffer(cb), "vkEndCommandBuffer")
+
+	self.fxFrameNo += 1
+	if self.fxFrameNo % 300 == 0 then
+		self:_sweepHistory()
+	end
 
 	self.waitSemArr:writeptr(0, self.imageAvailable[f])
 	self.sigSemArr:writeptr(0, sc.renderFinished[self.imageIndex + 1])
@@ -1686,6 +2125,11 @@ function Renderer:destroy()
 		L.vkDestroyPipeline(dev, self.hlOutlinePipeline, nil)
 		L.vkDestroyPipeline(dev, self.hlOutlinePipelineCull, nil)
 	end
+	for _, e in self.fxCache do
+		L.vkDestroyPipeline(dev, e.pipeline, nil)
+	end
+	L.vkDestroyPipeline(dev, self.fxCompositePipeline, nil)
+	L.vkDestroyPipelineLayout(dev, self.fxLayout, nil)
 	L.vkDestroyPipelineLayout(dev, self.uiLayout, nil)
 	L.vkDestroyPipelineLayout(dev, self.modelLayout, nil)
 	for _, m in self.mods do
@@ -1693,6 +2137,8 @@ function Renderer:destroy()
 	end
 	self:_destroySwapchain()
 	L.vkDestroyRenderPass(dev, self.renderPass, nil)
+	L.vkDestroyRenderPass(dev, self.layerPass, nil)
+	L.vkDestroyRenderPass(dev, self.fxPass, nil)
 	L.vkDestroyDescriptorPool(dev, self.descPool, nil)
 	L.vkDestroyDescriptorSetLayout(dev, self.dsl, nil)
 	L.vkDestroySampler(dev, self.sampler, nil)

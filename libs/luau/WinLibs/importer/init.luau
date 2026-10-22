@@ -25,7 +25,7 @@
 
 	helpers: importer.extension(path), importer.basename(path), importer.kind(path) ("image" | "font" | "model" | nil,
 	driven by the editable table importer.kinds).
-	Untested on real systems (written from the Zune 0.5.9 FFI source and the platform APIs' documentation).
+
 ]]
 
 local ffi = zune.ffi

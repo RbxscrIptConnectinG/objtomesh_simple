@@ -40,7 +40,6 @@
 		inside GLFW callbacks (e.g. Button onClick). The window you pass as `owner` is disabled while the dialog is open.
 
 	Windows only: on other systems every function returns nil, "popup: only supported on Windows".
-	Untested on real systems (written from the Win32 documentation and the Zune 0.5.9 FFI source).
 ]]
 
 local ffi = zune.ffi

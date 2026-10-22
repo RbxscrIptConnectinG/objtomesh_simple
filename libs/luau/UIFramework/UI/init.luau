@@ -89,6 +89,9 @@
 	ModelView:       highlight = { fillColor, fillTransparency, outlineColor, outlineTransparency, outlineThickness, depthMode } (real highlight: flat fill over the visible
 	                 surface + silhouette outline, no copied/inverted mesh; see README), modelTransparencyMethod ("blend" default | "dither" dot-pattern; applies to the model's imageTransparency / modelColor alpha; the ModelView `transparencyMethod` is its background), imageTransparency (0..1, fades the rendered model only; `transparency` fades the background only), model, texture, modelColor, yaw, pitch, zoom, fov, autoRotate (rad/s), zoomable,
 	                 doubleSided (default true; false culls back faces - faster, but triangles must wind counter-clockwise)
+	shaders (any widget): { ["datamosh.glsl"] = { blockSize = 24 }, ["chromatic.glsl"] = { order = 1 } } - GLSL effect files run over the widget's own drawing
+	                 (background, image, text, model; not its children, border or scrollbar). viewShaders (ModelView): the same, for the model render only.
+	                 See README "Effect shaders" and fx.luau for the file format.
 	ScrollingFrame:  scrollY, scrollSpeed, scrollbarColor, thumbColor  (always clips; wheel + scrollbar drag)
 
 ]]
@@ -1778,6 +1781,17 @@ function Widget:_drawBody(r: any, dt: number)
 		end
 		local mvp, light = modelMatrices(self)
 		local mc = self.modelColor
+		local viewEffects = if self.viewShaders ~= nil then r:effectsFor(self.viewShaders) else nil
+		if viewEffects and #viewEffects > 0 then
+			local key = rawget(self, "_viewFxKey")
+			if not key then
+				key = {}
+				self._viewFxKey = key
+			end
+			r:beginLayer({ x, y, w, h }, viewEffects, key) -- only the model render (incl. highlight) goes through viewShaders
+		else
+			viewEffects = nil
+		end
 		r:drawModel(
 			self.model,
 			x,
@@ -1793,6 +1807,9 @@ function Widget:_drawBody(r: any, dt: number)
 			methodName(self.modelTransparencyMethod, "modelTransparencyMethod"),
 			normalizeHighlight(self.highlight)
 		)
+		if viewEffects then
+			r:endLayer()
+		end
 	end
 
 	if self.kind == "TextBox" then
@@ -2285,6 +2302,9 @@ end
 function GUI:update(dt: number)
 	self.dt = dt
 	self.time += dt
+	if self.renderer.setEffectInput then
+		self.renderer:setEffectInput(dt, self.mx, self.my) -- time / dt / mouse of the effect shaders
+	end
 	if self.focus and not reachable(self.focus, self.root) then
 		self:_setFocus(nil) -- the focused widget was removed or hidden
 	end
@@ -2324,7 +2344,14 @@ function GUI:draw()
 		r:setClipRect(w._clip)
 		r:setQuadMethod(methodName(w.transparencyMethod, "transparencyMethod"))
 		if drawP[i] == 1 then
-			w:_drawBody(r, dt)
+			local effects = if w.shaders ~= nil then r:effectsFor(w.shaders) else nil
+			if effects and #effects > 0 then
+				r:beginLayer({ w.ax, w.ay, w.aw, w.ah }, effects, w) -- the body (background, image, text, model) goes through the effect shaders
+				w:_drawBody(r, dt)
+				r:endLayer()
+			else
+				w:_drawBody(r, dt)
+			end
 		else
 			w:_drawOverlay(r)
 		end
@@ -2350,6 +2377,7 @@ export type AppOptions = {
 	--          { libraryPath = "shaderc_shared.dll",     where the shaderc library is (optional, searched automatically otherwise)
 	--            shaders = "folder" | { modelFrag = "my/water.frag", ... } }   (optional; default: "shaders" beside renderer.luau)
 	shaders: any?,
+	effectDir: string?, -- extra folder searched for effect shader files (`shaders` / `viewShaders` props); "shaders/effects" beside renderer.luau is always searched
 	ZIndexBehavior: string?, -- "Sibling" (default) or "Global"; can be changed later via app.root.ZIndexBehavior
 }
 
@@ -2373,6 +2401,9 @@ function ui.createApp(opts: AppOptions?): any
 	end
 	if o.shaders ~= nil then
 		rendererOptions.shaders = o.shaders
+	end
+	if o.effectDir ~= nil then
+		rendererOptions.effectDir = o.effectDir
 	end
 	local ok, renderer = pcall(Renderer.new, glfw, window, rendererOptions)
 	if not ok then
