@@ -11,7 +11,6 @@ return function(root, objData, options: options): string
 	options = options or {} :: options
 
 	local lodType = root.lodType[(options.lodType or "None"):lower()]
-	print("LODTYPE", tostring(lodType))
 
 	local mesh = root.parsers.obj(root, objData, true, options.autoLODs)
 	local dracoBytes = Draco.encodeMeshFull(mesh.vertices, mesh.faces, options.draco)
