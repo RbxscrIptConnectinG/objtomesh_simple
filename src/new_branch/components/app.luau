@@ -9,6 +9,7 @@ local e = react.createElement
 local theme = require("@toMesh/theme")
 local mesh = require("@applibs/mesh/")
 local cframe = require("@applibs/cframe")
+local scenelib = require("@libs/luau/UIFramework/UI/scene")
 
 local props, state = {}, {}
 
@@ -23,8 +24,46 @@ return function(props: props, state: state)
 	local selected: number = reactReflex.useSelector(function(state)
 		return state.intro.transparency
 	end)
-	local model = react.useMemo(function()
-		return renderer:createModel(mesh.parsers.obj(mesh, fs.readFileSync("./assets/toMesh/models/baseCube.obj")))
+	local scene = react.useMemo(function()
+		local model =
+			renderer:createModel(mesh.parsers.obj(mesh, fs.readFileSync("./assets/toMesh/models/baseCube.obj")))
+		local UIFW = renderer.UIFW
+		local scene = scenelib.new()
+		scene.camera.cframe = cframe.new(0, 0, 15)
+		scene:addModel(model, 1, cframe.new(7, 0, 0), {
+			shaders = {
+				["chromatic.glsl"] = {},
+			},
+		})
+		scene:addModel(model, 1, cframe.new(0, 0, 0), {
+			shaders = {
+				["chromatic.glsl"] = {
+					order = 2,
+					offset = 5,
+				},
+				["datamosh.glsl"] = {
+					order = 1,
+					amount = 1,
+					threshold = 0.6,
+					refresh = 0.05,
+					blockSize = 2,
+					smear = 2,
+				},
+			},
+		})
+		scene:addModel(model, 1, cframe.new(-7, 0, 0), {
+			shaders = {
+				["datamosh.glsl"] = {
+					order = 1,
+					amount = 1,
+					threshold = 0.6,
+					refresh = 0.05,
+					blockSize = 2,
+					smear = 2,
+				},
+			},
+		})
+		return scene
 	end, { renderer })
 	if selected < 3 then
 		return
@@ -53,7 +92,13 @@ return function(props: props, state: state)
 				},
 			},
 		}, {
-			scroll = e("ScrollingFrame", {
+			scene = e("ViewportFrame", {
+				size = { 1, 0, 1, 0 },
+				anchor = { 0.5, 0.5 },
+				position = { 0.5, 0, 0.5, 0 },
+				scene = scene,
+			}),
+			--[[scroll = e("ScrollingFrame", {
 				size = { 0.5, 0, 1, 0 },
 				anchor = { 0, 0.5 },
 				position = { 0, 0, 0.5, 0 },
@@ -90,7 +135,7 @@ return function(props: props, state: state)
 					},
 				},
 				zoomable = true,
-			}),
+			}),]]
 		}),
 	})
 end

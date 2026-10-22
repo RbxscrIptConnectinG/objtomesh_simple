@@ -60,7 +60,7 @@ end
 --------------------------------------------------------------------------
 
 -- Returns ranges ({start, end} absolute offsets, end exclusive) and the offset after the INDEX.
-local function cffIndex(b: buffer, off: number): ({ { number } }, number)
+local function cffIndex(b: buffer, off: number): ({ { number } }?, number?)
 	local count = u16(b, off)
 	if count == 0 then
 		return {}, off + 2
@@ -549,9 +549,9 @@ function Font:_initCFF()
 		end
 		local size, off = d[18][1], d[18][2]
 		local pd = cffDict(b, base + off, base + off + size)
-		local subrs = {}
+		local subrs: { { number } } = {}
 		if pd[19] then
-			subrs = cffIndex(b, base + off + pd[19][1])
+			subrs = cffIndex(b, base + off + pd[19][1]) or {}
 		end
 		return { subrs = subrs }
 	end

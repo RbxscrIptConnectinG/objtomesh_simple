@@ -15,6 +15,7 @@
 		r:destroy()
 
 	Coordinates are framebuffer pixels, origin top-left. Draw order == call order.
+	NOT TESTED on real hardware - see the notes in README.md.
 ]]
 
 local ffi = zune.ffi
@@ -451,6 +452,8 @@ function Renderer.new(glfw: any, window: any, options: Options?): any
 		v0 = 1.0,
 		v1 = 0,
 	}, self.persist)
+	self.clearAttStencil =
+		vk.new("VkClearAttachment", { aspectMask = 4, colorAttachment = 0, v0 = 1.0, v1 = 0 }, self.persist) -- stencil only
 	a:free()
 
 	-- swapchain-dependent objects
@@ -794,7 +797,7 @@ function Renderer:_createPipeline(
 	blend: boolean,
 	depth: boolean,
 	cullMode: number?,
-	depthStencil
+	depthStencil: { [string]: number }?
 ): any
 	local a = vk.arena()
 	local L = self.L
@@ -826,7 +829,8 @@ function Renderer:_createPipeline(
 		frontFace = 0,
 		lineWidth = 1.0, -- frontFace 0 = counter-clockwise
 	}
-	for k, v in depthStencil or {} do -- depthBias* entries of the override table belong to the rasterizer state
+	local overrides: { [string]: number } = depthStencil or {}
+	for k, v in overrides do -- depthBias* entries of the override table belong to the rasterizer state
 		if string.sub(k, 1, 9) == "depthBias" then
 			rasterFields[k] = v
 		end
@@ -844,7 +848,7 @@ function Renderer:_createPipeline(
 		depthCompareOp = 1,
 		maxDepthBounds = 1.0,
 	}
-	for k, v in depthStencil or {} do -- overrides: depth compare op, stencil state (f0..f6 = front, b0..b6 = back)
+	for k, v in overrides do -- overrides: depth compare op, stencil state (f0..f6 = front, b0..b6 = back)
 		if string.sub(k, 1, 9) ~= "depthBias" then
 			dsFields[k] = v
 		end
@@ -1312,8 +1316,7 @@ end
 -- data: PNG or SVG file contents (string or buffer). PNG needs zune.serde.zlib.
 -- options (SVG only): { width =, height =, scale =, color =, background =, preserveAspectRatio =, bleed = }, see svg.luau
 function Renderer:loadImage(data: string | buffer, options: { [string]: any }?): any
-	local image = require("./image")
-	local w, h, rgba = image.decode(data, options)
+	local w, h, rgba = imagelib.decode(data, options)
 	return self:createTexture(w, h, rgba)
 end
 
@@ -1584,6 +1587,8 @@ end
 	method: "blend" (default, alpha blending) | "dither" (4x4 dot pattern, alpha picks how many dots; alpha-only texture cutouts included)
 	interp: texture interpolation id: 0 Linear (default), 1 Nearest Neighbor, 2 Cubic (Catmull-Rom), 3 Cubic B-spline, 4 Mitchell, 5 Lanczos-3
 	doubleSided: false = back faces are culled (counter-clockwise triangles are front faces), anything else = drawn
+	clear: what is reset inside the view rect before the model is drawn: "all" (default: depth + stencil) | "none" (keep the depth of the models drawn before, so several models
+	       in one view occlude each other: ViewportFrame) | "stencil" (keep depth, fresh stencil: a later model with a highlight)
 ]]
 function Renderer:drawModel(
 	model: any,
@@ -1598,7 +1603,8 @@ function Renderer:drawModel(
 	doubleSided: boolean?,
 	interp: number?,
 	method: string?,
-	highlight: any?
+	highlight: any?,
+	clear: string?
 )
 	local pc = buffer.create(96)
 	for i = 1, 16 do
@@ -1621,6 +1627,7 @@ function Renderer:drawModel(
 		interp = interp or 0,
 		dither = (method == "dither"),
 		hl = highlight,
+		clear = clear,
 	})
 	self.cur = nil
 end
@@ -2002,7 +2009,11 @@ function Renderer:_replay(cb: any, list: { any })
 					self:_setViewport(cb, mx, my, mw, mh)
 					self:_setScissor(cb, vx0, vy0, vx1 - vx0, vy1 - vy0)
 					vk.set(self.clearRect, "VkClearRect", { x = vx0, y = vy0, width = vx1 - vx0, height = vy1 - vy0 })
-					L.vkCmdClearAttachments(cb, 1, self.clearAtt, 1, self.clearRect) -- reset depth inside the view
+					if cmd.clear == nil or cmd.clear == "all" then
+						L.vkCmdClearAttachments(cb, 1, self.clearAtt, 1, self.clearRect) -- reset depth (+ stencil) inside the view
+					elseif cmd.clear == "stencil" and self.hasStencil then
+						L.vkCmdClearAttachments(cb, 1, self.clearAttStencil, 1, self.clearRect)
+					end
 					L.vkCmdPushConstants(cb, self.modelLayout, C.SHADER_VERTEX, 0, 96, cmd.pc)
 					self.setArr:writeptr(0, if cmd.interp == 1 then cmd.tex:nearestSet() else cmd.tex.set)
 					buffer.writeu32(self.modeBuf, 0, cmd.interp)

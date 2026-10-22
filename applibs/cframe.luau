@@ -32,16 +32,18 @@
 
 	Operators
 		cf * cf     compose (a * b = b expressed in a's space)       cf * vector   transforms the point
+		            (typed as `CFrame | vector` because Luau has no overloads: refine with typeof(r) == "vector", or call :PointToWorldSpace / :ToWorldSpace)
 		cf + vector translate in world space                          cf - vector   the same, negated
 		cf == cf    exact equality of all 12 components               tostring(cf)  the 12 components
 
-	Untested (written without a Luau runtime).
+	Typechecked with luau-lsp 1.70.1 (`analyze --platform=standard`), the math checked against a Python port; never run in Zune.
 ]]
 
 local module = {}
+module.__index = module
 
 -- r00 .. r22 are the rotation matrix (rows); right = column 0, up = column 1, back = column 2. Treat them as internal.
-export type CFrame = typeof(setmetatable({}, module)) & {
+type CFrameData = {
 	X: number,
 	Y: number,
 	Z: number,
@@ -56,54 +58,14 @@ export type CFrame = typeof(setmetatable({}, module)) & {
 	r22: number,
 
 	Position: vector,
-	Rotation: CFrame,
+	Rotation: CFrame, -- set once by make(); the table is frozen afterwards
 	RightVector: vector,
 	UpVector: vector,
 	LookVector: vector,
-
-	Inverse: (self: CFrame) -> CFrame,
-	Lerp: (self: CFrame, goal: CFrame, alpha: number) -> CFrame,
-	Orthonormalize: (self: CFrame) -> CFrame,
-	ToWorldSpace: (self: CFrame, ...CFrame) -> ...CFrame,
-	ToObjectSpace: (self: CFrame, ...CFrame) -> ...CFrame,
-	PointToWorldSpace: (self: CFrame, v: vector) -> vector,
-	PointToObjectSpace: (self: CFrame, v: vector) -> vector,
-	VectorToWorldSpace: (self: CFrame, v: vector) -> vector,
-	VectorToObjectSpace: (self: CFrame, v: vector) -> vector,
-	GetComponents: (
-		self: CFrame
-	) -> (number?, number?, number?, number?, number?, number?, number?, number?, number?, number?, number?, number?),
-	ToEulerAnglesXYZ: (self: CFrame) -> (number?, number?, number?),
-	ToEulerAnglesYXZ: (self: CFrame) -> (number?, number?, number?),
-	ToOrientation: (self: CFrame) -> (number?, number?, number?),
-	ToAxisAngle: (self: CFrame) -> (vector?, number?),
-	ToQuaternion: (self: CFrame) -> (number?, number?, number?, number?),
-	FuzzyEq: (self: CFrame, other: CFrame, epsilon: number?) -> boolean,
 }
 
-export type NewFunction =
-	(() -> CFrame)
-	& ((pos: vector) -> CFrame)
-	& ((pos: vector, lookAt: vector) -> CFrame)
-	& ((x: number, y: number, z: number) -> CFrame)
-	& ((x: number, y: number, z: number, qx: number, qy: number, qz: number, qw: number) -> CFrame)
-	& ((
-		x: number,
-		y: number,
-		z: number,
-		r00: number,
-		r01: number,
-		r02: number,
-		r10: number,
-		r11: number,
-		r12: number,
-		r20: number,
-		r21: number,
-		r22: number
-	) -> CFrame)
-
-type MulFunction = ((a: CFrame, b: CFrame) -> CFrame) & ((a: CFrame, b: vector) -> vector)
-type TranslateFunction = (a: CFrame, b: vector) -> CFrame
+-- the data above + the metatable `module`, so the methods below are available on every CFrame
+export type CFrame = typeof(setmetatable({} :: CFrameData, module))
 
 local EPS = 1e-9
 
@@ -111,7 +73,7 @@ local EPS = 1e-9
 -- Internals
 --------------------------------------------------------------------------
 
-local function make(
+local function build(
 	x: number,
 	y: number,
 	z: number,
@@ -125,7 +87,7 @@ local function make(
 	r21: number,
 	r22: number
 ): CFrame
-	local self = setmetatable({
+	local data: CFrameData = {
 		X = x,
 		Y = y,
 		Z = z,
@@ -142,9 +104,37 @@ local function make(
 		RightVector = vector.create(r00, r10, r20),
 		UpVector = vector.create(r01, r11, r21),
 		LookVector = vector.create(-r02, -r12, -r22),
-	}, module) :: any
+		Rotation = nil :: any, -- set by make(): a CFrame cannot be created before the one it refers to
+	}
+	return setmetatable(data, module)
+end
+
+-- The Rotation of a CFrame is a CFrame without position, and its own Rotation is itself (a pure rotation shares itself).
+local function make(
+	x: number,
+	y: number,
+	z: number,
+	r00: number,
+	r01: number,
+	r02: number,
+	r10: number,
+	r11: number,
+	r12: number,
+	r20: number,
+	r21: number,
+	r22: number
+): CFrame
+	local self = build(x, y, z, r00, r01, r02, r10, r11, r12, r20, r21, r22)
+	if x == 0 and y == 0 and z == 0 then
+		self.Rotation = self
+	else
+		local rotation = build(0, 0, 0, r00, r01, r02, r10, r11, r12, r20, r21, r22)
+		rotation.Rotation = rotation
+		table.freeze(rotation)
+		self.Rotation = rotation
+	end
 	table.freeze(self)
-	return self :: CFrame
+	return self
 end
 
 local function isCFrame(value: any): boolean
@@ -254,41 +244,28 @@ end
 -- Constructors
 --------------------------------------------------------------------------
 
-local function newImpl(a: any?, b: any?, c: any?, ...: number): CFrame
+-- Luau has no user-defined overloads: one signature, the arguments are refined by type below.
+local function newImpl(a: (vector | number)?, b: (vector | number)?, c: number?, ...: number): CFrame
 	if a == nil then
 		return make(0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1)
-	end
-	if type(a) == "vector" then
-		local pos: vector = a
+	elseif typeof(a) == "vector" then
 		if b == nil then
-			return make(pos.x, pos.y, pos.z, 1, 0, 0, 0, 1, 0, 0, 0, 1)
+			return make(a.x, a.y, a.z, 1, 0, 0, 0, 1, 0, 0, 0, 1)
+		elseif typeof(b) == "vector" then
+			return module.lookAlong(a, b - a)
 		end
-		return module.lookAlong(pos, (b :: vector) - pos)
+		error("CFrame.new: expected (pos) or (pos, lookAt)", 2)
 	end
-	assert(
-		type(a) == "number" and type(b) == "number" and type(c) == "number",
-		"CFrame.new: expected (), (pos), (pos, lookAt), (x, y, z), 7 or 12 numbers"
-	)
+	if typeof(b) ~= "number" or c == nil then
+		error("CFrame.new: expected (), (pos), (pos, lookAt), (x, y, z), 7 or 12 numbers", 2)
+	end
 	local rest: { number } = { ... }
 	if #rest == 0 then
-		return make(a, b :: number, c :: number, 1, 0, 0, 0, 1, 0, 0, 0, 1)
+		return make(a, b, c, 1, 0, 0, 0, 1, 0, 0, 0, 1)
 	elseif #rest == 4 then
-		return fromQuat(a, b :: number, c :: number, rest[1], rest[2], rest[3], rest[4])
+		return fromQuat(a, b, c, rest[1], rest[2], rest[3], rest[4])
 	elseif #rest == 9 then
-		return make(
-			a,
-			b :: number,
-			c :: number,
-			rest[1],
-			rest[2],
-			rest[3],
-			rest[4],
-			rest[5],
-			rest[6],
-			rest[7],
-			rest[8],
-			rest[9]
-		)
+		return make(a, b, c, rest[1], rest[2], rest[3], rest[4], rest[5], rest[6], rest[7], rest[8], rest[9])
 	end
 	error("CFrame.new: expected 3, 7 or 12 numbers", 2)
 end
@@ -406,7 +383,8 @@ end
 
 function module.ToWorldSpace(self: CFrame, ...: CFrame): ...CFrame
 	local out: { CFrame } = {}
-	for i, other in { ... } do
+	local others: { CFrame } = { ... }
+	for i, other in others do
 		out[i] = mul(self, other)
 	end
 	return table.unpack(out)
@@ -415,7 +393,8 @@ end
 function module.ToObjectSpace(self: CFrame, ...: CFrame): ...CFrame
 	local inverse = module.Inverse(self)
 	local out: { CFrame } = {}
-	for i, other in { ... } do
+	local others: { CFrame } = { ... }
+	for i, other in others do
 		out[i] = mul(inverse, other)
 	end
 	return table.unpack(out)
@@ -494,14 +473,14 @@ function module.ToAxisAngle(self: CFrame): (vector?, number?)
 		local y = math.sqrt(math.max(0, (self.r11 + 1) / 2))
 		local z = math.sqrt(math.max(0, (self.r22 + 1) / 2))
 		if x >= y and x >= z then
-			y = if (self.r01 :: number) < 0 then -y else y
-			z = if (self.r02 :: number) < 0 then -z else z
+			y = if self.r01 < 0 then -y else y
+			z = if self.r02 < 0 then -z else z
 		elseif y >= z then
-			x = if (self.r01 :: number) < 0 then -x else x
-			z = if (self.r12 :: number) < 0 then -z else z
+			x = if self.r01 < 0 then -x else x
+			z = if self.r12 < 0 then -z else z
 		else
-			x = if (self.r02 :: number) < 0 then -x else x
-			y = if (self.r12 :: number) < 0 then -y else y
+			x = if self.r02 < 0 then -x else x
+			y = if self.r12 < 0 then -y else y
 		end
 		return safeNormalize(vector.create(x, y, z), vector.create(0, 1, 0)), angle
 	end
@@ -532,42 +511,22 @@ end
 -- Metamethods
 --------------------------------------------------------------------------
 
--- Everything is a plain field or a method except `Rotation`, which is built on demand (it would recurse if it were stored).
-module.__index = function(self: CFrame, key: unknown): any
-	if key == "Rotation" then
-		return make(0, 0, 0, self.r00, self.r01, self.r02, self.r10, self.r11, self.r12, self.r20, self.r21, self.r22)
+-- cf * cf composes, cf * vector transforms the point. Luau has no overloads, so the result is a union: refine it with typeof(...) or use
+-- :PointToWorldSpace(v) / :ToWorldSpace(cf) when you want the exact type.
+function module.__mul(a: CFrame, b: CFrame | vector): CFrame | vector
+	if typeof(b) == "vector" then
+		return rotate(a, b) + a.Position
 	end
-	return (module :: any)[key]
+	return mul(a, b)
 end
 
-module.__newindex = function(_: CFrame, key: unknown, _value: unknown)
-	error(`CFrame is immutable (cannot set "{tostring(key)}")`, 2)
+function module.__add(a: CFrame, b: vector): CFrame
+	return make(a.X + b.x, a.Y + b.y, a.Z + b.z, a.r00, a.r01, a.r02, a.r10, a.r11, a.r12, a.r20, a.r21, a.r22)
 end
 
-module.__mul = (
-	(
-		function(a: CFrame, b: unknown): any
-			if type(b) == "vector" then
-				return rotate(a, b) + a.Position
-			elseif isCFrame(b) then
-				return mul(a, b :: CFrame)
-			end
-			error("CFrame * expects a CFrame or a vector", 2)
-		end
-	) :: any
-) :: MulFunction
-
-module.__add = (
-	function(a: CFrame, b: vector): CFrame
-		return make(a.X + b.x, a.Y + b.y, a.Z + b.z, a.r00, a.r01, a.r02, a.r10, a.r11, a.r12, a.r20, a.r21, a.r22)
-	end
-) :: TranslateFunction
-
-module.__sub = (
-	function(a: CFrame, b: vector): CFrame
-		return make(a.X - b.x, a.Y - b.y, a.Z - b.z, a.r00, a.r01, a.r02, a.r10, a.r11, a.r12, a.r20, a.r21, a.r22)
-	end
-) :: TranslateFunction
+function module.__sub(a: CFrame, b: vector): CFrame
+	return make(a.X - b.x, a.Y - b.y, a.Z - b.z, a.r00, a.r01, a.r02, a.r10, a.r11, a.r12, a.r20, a.r21, a.r22)
+end
 
 module.__eq = function(a: CFrame, b: CFrame): boolean
 	return a.X == b.X

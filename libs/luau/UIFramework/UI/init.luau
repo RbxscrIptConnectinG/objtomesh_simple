@@ -7,7 +7,7 @@
 	panel:add(ui.Button({ size = {0, 40}, onClick = function(btn) print("clicked") end }))
 	app:run()
 
-	Widgets: Frame, Button, Image, ModelView, ScrollingFrame, Text, TextBox
+	Widgets: Frame, Button, Image, ModelView, ViewportFrame, ScrollingFrame, Text, TextBox
 	Common props: transparencyMethod ("blend" default | "dither" dot-pattern, for all 2D drawing of the widget: background, border, text, image), antiAlias (text glyph edges: nil / "Grayscale" smooth | "None" hard-edged 1-bit), interpolation (texture filtering of Image / ModelView / Button icon:
 	                 "Linear" (default) | "Nearest Neighbor" | "Cubic" | "Cubic B-spline" | "Mitchell" | "Lanczos"), backgroundTransparency / textTransparency / imageTransparency (0 opaque .. 1 invisible; they override the optional 4th (alpha) value of the colour; `transparency` = old name of backgroundTransparency; background only - text, border, images and
 	                 models stay fully visible), position, size, anchor, color {r,g,b,a}, visible, border {width=, color=}, clip, effects, LayoutOrder, name,
@@ -89,6 +89,9 @@
 	ModelView:       highlight = { fillColor, fillTransparency, outlineColor, outlineTransparency, outlineThickness, depthMode } (real highlight: flat fill over the visible
 	                 surface + silhouette outline, no copied/inverted mesh; see README), modelTransparencyMethod ("blend" default | "dither" dot-pattern; applies to the model's imageTransparency / modelColor alpha; the ModelView `transparencyMethod` is its background), imageTransparency (0..1, fades the rendered model only; `transparency` fades the background only), model, texture, modelColor, yaw, pitch, zoom, fov, autoRotate (rad/s), zoomable,
 	                 doubleSided (default true; false culls back faces - faster, but triangles must wind counter-clockwise)
+	ViewportFrame:   scene = a world from scene.luau: scene.new() (world:addModel(model, size, cframe)) or a plain table { camera, light, objects } - see scene.luau.
+	                 Several models share one view and occlude each other; each object has its own color, texture, shaders, ... `color` is the background; viewShaders: effect shaders
+	                 over the whole scene render (background excluded); `shaders` works as on every widget.
 	shaders (any widget): { ["datamosh.glsl"] = { blockSize = 24 }, ["chromatic.glsl"] = { order = 1 } } - GLSL effect files run over the widget's own drawing
 	                 (background, image, text, model; not its children, border or scrollbar). viewShaders (ModelView): the same, for the model render only.
 	                 See README "Effect shaders" and fx.luau for the file format.
@@ -101,6 +104,7 @@ local Renderer = require("./renderer")
 local fontlib = require("@self/font")
 local textlib = require("@self/text")
 local imagelib = require("./image")
+local scenelib = require("@self/scene")
 
 local ui = {}
 
@@ -148,6 +152,7 @@ local DEFAULTS: { [string]: { [string]: any } } = {
 		zoomable = false,
 		doubleSided = true,
 	},
+	ViewportFrame = { color = { 0.05, 0.05, 0.07, 1 }, interactive = false },
 	ScrollingFrame = {
 		color = { 0.12, 0.13, 0.16, 1 },
 		interactive = true,
@@ -205,6 +210,9 @@ function ui.Image(props: any?): any
 end
 function ui.ModelView(props: any?): any
 	return create("ModelView", props)
+end
+function ui.ViewportFrame(props: any?): any
+	return create("ViewportFrame", props)
 end
 function ui.ScrollingFrame(props: any?): any
 	return create("ScrollingFrame", props)
@@ -437,6 +445,18 @@ function Widget:_interp(): number
 		)
 	end
 	self._interpCache = { value, id }
+	return id
+end
+
+-- interpolation name -> id (scene objects have their own)
+local function interpolationId(value: any): number
+	local id = INTERPOLATION[normalizeName(value)]
+	if not id then
+		error(
+			`ui: unknown interpolation "{value}" (use "Linear", "Nearest Neighbor", "Cubic", "Cubic B-spline", "Mitchell" or "Lanczos")`,
+			0
+		)
+	end
 	return id
 end
 
@@ -1807,6 +1827,34 @@ function Widget:_drawBody(r: any, dt: number)
 			methodName(self.modelTransparencyMethod, "modelTransparencyMethod"),
 			normalizeHighlight(self.highlight)
 		)
+		if viewEffects then
+			r:endLayer()
+		end
+	end
+
+	if self.kind == "ViewportFrame" and self.scene ~= nil then
+		local viewEffects = if self.viewShaders ~= nil then r:effectsFor(self.viewShaders) else nil
+		if viewEffects and #viewEffects > 0 then
+			local key = rawget(self, "_viewFxKey")
+			if not key then
+				key = {}
+				self._viewFxKey = key
+			end
+			r:beginLayer({ x, y, w, h }, viewEffects, key)
+		else
+			viewEffects = nil
+		end
+		scenelib.render(r, self.scene, x, y, w, h, {
+			texture = function(value)
+				return self:_resolveTex(value)
+			end,
+			interpolation = interpolationId,
+			method = function(value)
+				return methodName(value, "transparencyMethod")
+			end,
+			highlight = normalizeHighlight,
+			defaultInterpolation = self:_interp(),
+		})
 		if viewEffects then
 			r:endLayer()
 		end
