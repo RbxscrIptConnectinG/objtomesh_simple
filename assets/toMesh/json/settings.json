@@ -11,6 +11,24 @@
             // Calculation: resolution ^ cur_level
             // NEVER EVER SET "resolution" TO SOMETHING LOWER THAN 0.5 IF YOU'RE USING LOW POLY MODEL
             // USE EITHER 0.8 OR 0.7
+
+            // you don't want your model be be one stick... let it be two sticks!
+            "minFaces": 4,
+
+            // for thee nerd that want to have their own resolutions (non level dependent)
+            "ratiosEnabled": true,
+            "ratios": [
+                0.9,    //LV1
+                0.8,    //LV2
+                0.7,    //LV3
+                0.6,    //LV4
+                0.5,    //LV5
+                0.4,    //LV6
+                0.3,    //LV7
+                0.2,    //LV8
+                0.1     //LV9
+            ],
+
             "methodOptions": {
                 "ZeuxMeshOptimizer": {
 	                // Weld corners by position + normal + uv (true, default) so UV seams and

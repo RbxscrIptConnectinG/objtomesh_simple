@@ -112,6 +112,10 @@ return function(
 		and math.floor(autoLods.levels) > 0
 		and root.utils.autoLOD[string.lower(autoLods.method)] ~= nil
 	then
+		local methodOptions = sift.Dictionary.map(autoLods.methodOptions, function(value, key)
+			return value, key:lower()
+		end)
+
 		local methodName = string.lower(autoLods.method)
 		local levels = math.floor(autoLods.levels)
 		local baseFaceCount = #faces
@@ -123,11 +127,11 @@ return function(
 
 		for level = 1, levels do
 			print(`[LV{level}] generating...`)
-			local calc_div = autoLods.resolution ^ level
+			local calc_div = autoLods.ratiosEnabled and autoLods.ratios[level] or autoLods.resolution ^ level
 
-			local targetCount = math.max(4, math.floor(baseFaceCount * calc_div))
+			local targetCount = math.max(autoLods.minFaces, math.floor(baseFaceCount * calc_div))
 			local lodVerts, lodFaces =
-				root.utils.autoLOD[methodName](vertices, faces, targetCount, autoLods.methodOptions[methodName] or {})
+				root.utils.autoLOD[methodName](vertices, faces, targetCount, methodOptions[methodName] or {})
 
 			local base = #allVerts
 			for _, v in lodVerts do

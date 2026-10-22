@@ -88,32 +88,29 @@ function Meshopt.simplify(
 	vertices: { meshTypes.Vertex },
 	faces: { meshTypes.Face },
 	targetIndexCount: number,
-	options: SimplifyOptions
+	options: any
 ): ({ meshTypes.Vertex }, { meshTypes.Face }, number)
 	if lib == nil then
 		lib = ffi.dlopen(libPath, {
-			MeshoptSimplifyEx = fn(
-				t.i64,
-				{
-					t.pointer,
-					t.u32,
-					t.pointer,
-					t.u32,
-					t.pointer,
-					t.pointer,
-					t.u32,
-					t.u32,
-					t.float,
-					t.u32,
-					t.i32,
-					t.pointer,
-					t.u32,
-					t.pointer,
-				}
-			),
+			MeshoptSimplifyEx = fn(t.i64, {
+				t.pointer,
+				t.u32,
+				t.pointer,
+				t.u32,
+				t.pointer,
+				t.pointer,
+				t.u32,
+				t.u32,
+				t.float,
+				t.u32,
+				t.i32,
+				t.pointer,
+				t.u32,
+				t.pointer,
+			}),
 		})
 	end
-	options = options or {} :: SimplifyOptions
+	options = options or {} :: any
 	local targetError = options.targetError or 1.0
 	local uvWeight = options.uvWeight or 2
 	local normalWeight = options.normalWeight or 1

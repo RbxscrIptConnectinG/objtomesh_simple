@@ -70,16 +70,7 @@ return function(
 		end
 	end
 
-	local simplifiedVerts, simplified = meshopt.simplify(welded, weldedFaces, targetFaceCount * 3, {
-		targetError = options.targetError,
-		lockBorder = options.lockBorder,
-		regularize = options.regularize,
-		prune = options.prune,
-		permissive = options.permissive,
-		uvWeight = options.uvWeight,
-		normalWeight = options.normalWeight,
-		updateVertices = options.updateVertices,
-	})
+	local simplifiedVerts, simplified = meshopt.simplify(welded, weldedFaces, targetFaceCount * 3, options)
 
 	local outVerts: { meshTypes.Vertex } = {}
 	local outFaces: { meshTypes.Face } = table.create(#simplified)
