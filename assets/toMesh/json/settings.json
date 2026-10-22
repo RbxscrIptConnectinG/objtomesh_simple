@@ -3,7 +3,7 @@
     "options": {
         // The lodType is metadata from Roblox describing what technique was used to auto-generate LODs for this mesh.
         // but otherwise is unimportant
-        "lodType": "None", // None | Unknown | RbxSimplifier | ZeuxMeshOptimizer
+        "lodType": "ZeuxMeshOptimizer", // None | Unknown | RbxSimplifier | ZeuxMeshOptimizer
         "autoLODs": {
             "method": "ZeuxMeshOptimizer", // QEM | MC | ZeuxMeshOptimizer
             "levels": 4, // honestly, what the fuck is wrong with roblox engine?, LODs from 5 to 9 doesn't even show up even when you try and force them to
