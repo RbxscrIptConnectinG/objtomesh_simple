@@ -17,6 +17,9 @@ export type Face = {
 }
 
 export type MeshData = {
+	header: {
+		lodType: number?,
+	}?,
 	vertices: { Vertex },
 	faces: { Face },
 	lodOffsets: {}?,

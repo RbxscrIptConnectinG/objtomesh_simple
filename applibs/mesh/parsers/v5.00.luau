@@ -5,6 +5,7 @@ return function(root, data: string, headerOffset: number): meshTypes.MeshData
 	local off = headerOffset
 
 	local headerSize = buffer.readu16(buf, off)
+	local lodType = buffer.readu16(buf, off + 2)
 
 	local numVerts = buffer.readu32(buf, off + 4)
 	local numFaces = buffer.readu32(buf, off + 8)
@@ -42,5 +43,12 @@ return function(root, data: string, headerOffset: number): meshTypes.MeshData
 	off += numSubsets * 72
 	off += facsDataSize
 
-	return { vertices = vertices, faces = faces, lodOffsets = lodOffsets }
+	return {
+		header = {
+			lodType = lodType,
+		},
+		vertices = vertices,
+		faces = faces,
+		lodOffsets = lodOffsets,
+	}
 end

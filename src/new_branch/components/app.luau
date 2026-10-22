@@ -8,6 +8,7 @@ local e = react.createElement
 
 local theme = require("@toMesh/theme")
 local mesh = require("@applibs/mesh/")
+local cframe = require("@applibs/cframe")
 
 local props, state = {}, {}
 
@@ -72,9 +73,16 @@ return function(props: props, state: state)
 				anchor = { 1, 0.5 },
 				position = { 1, 0, 0.5, 0 },
 				model = model,
-				viewShaders = { ["chromatic.glsl"] = { order = 1 }, ["datamosh.glsl"] = {
-					blockSize = 5,
-				} },
+				modelTransparencyMethod = "dither",
+				imageTransparency = 0.9,
+				viewShaders = {
+					["chromatic.glsl"] = { order = 1 },
+					["datamosh.glsl"] = {
+						threshold = 0.1,
+						refresh = 0.1,
+						blockSize = 5,
+					},
+				},
 				zoomable = true,
 			}),
 		}),

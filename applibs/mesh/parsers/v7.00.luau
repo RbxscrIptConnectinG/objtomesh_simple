@@ -14,6 +14,7 @@ return function(root, data: string, headerOffset: number): meshTypes.MeshData
 	local vertices: { meshTypes.Vertex }? = nil
 	local faces: { meshTypes.Face }? = nil
 	local lodOffsets: { number }? = nil
+	local lodType: number? = nil
 
 	local offset = headerOffset
 	while offset < size do
@@ -48,6 +49,7 @@ return function(root, data: string, headerOffset: number): meshTypes.MeshData
 
 			vertices, faces = Draco.decodeMeshFull(dracoBytes)
 		elseif chunkType == "LODS\0\0\0\0" then
+			lodType = buffer.readu16(dataBuffer, dataStart)
 			local numLodOffsets = buffer.readu32(dataBuffer, dataStart + 3)
 			local offsets = table.create(numLodOffsets)
 			for i = 1, numLodOffsets do
@@ -63,5 +65,12 @@ return function(root, data: string, headerOffset: number): meshTypes.MeshData
 		error("no COREMESH chunk found in file")
 	end
 
-	return { vertices = vertices, faces = faces, lodOffsets = lodOffsets }
+	return {
+		header = {
+			lodType = lodType,
+		},
+		vertices = vertices,
+		faces = faces,
+		lodOffsets = lodOffsets,
+	}
 end
