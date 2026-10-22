@@ -1,6 +1,7 @@
 --!strict
 -- Zeux's Mesh Optimizer Method
 local meshTypes = require("@applibs/mesh/types")
+
 local meshopt = require("@self/meshopt")
 
 return function(

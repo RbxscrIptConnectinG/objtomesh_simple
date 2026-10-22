@@ -13,7 +13,15 @@
             // USE EITHER 0.8 OR 0.7
             "methodOptions": {
                 "ZeuxMeshOptimizer": {
+                    // Error tolerance relative to mesh extents, e.g. 0.01 = 1% deformation.
+                    // 1.0 (effectively "no error limit") so targetIndexCount is
+                    // the only thing that decides how far simplification goes; lower this
+                    // if you want simplification to stop early rather than risk visible
+                    // distortion.
                     "targetError": 1,
+                    // Locks vertices on open mesh boundaries in place so open rims/seams
+                    // (e.g. an unclosed bottom on an OBJ) resist caving in during
+                    // simplification, rather than shrinking toward the mesh's centroid.
                     "lockBorder": true
                 },
                 "QEM": {},
