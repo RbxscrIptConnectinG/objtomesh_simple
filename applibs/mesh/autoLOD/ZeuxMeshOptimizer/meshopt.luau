@@ -27,14 +27,8 @@ type MeshoptAPI = {
 
 local Meshopt = {}
 
--- ffi.dlopen resolves paths relative to zune's current working directory,
--- NOT relative to this script file - see Draco.setLibraryPath's comment for
--- the same caveat. Call Meshopt.setLibraryPath(...) with an absolute path
--- before your first simplify() call if you don't run zune from this folder.
-
 local libPath = environment.IsNotCompiled and "./libs/bin/ZMO.dll" or fs.path.join(environment.RootPath, "bin/ZMO.dll")
 
---"./libs/bin/meshopt_wrapper.dll"
 local lib: MeshoptAPI = nil
 
 local function upload(buf: buffer): FFIPointer
@@ -54,9 +48,6 @@ local function download(ptr: FFIPointer, size: number): buffer
 	return buf
 end
 
--- zune's ffi returns i64/u64 values as an 8-byte buffer rather than a Luau
--- number - see draco.luau's readI64 comment for why. Our values (index
--- counts) are always well within safe-integer range.
 local function readI64(buf: buffer): number
 	local lo = buffer.readu32(buf, 0)
 	local hi = buffer.readi32(buf, 4)
@@ -77,14 +68,6 @@ export type SimplifyOptions = {
 	lockBorder: boolean?,
 }
 
--- Reduces faces's triangle count via meshopt_simplify. vertices/faces use
--- this library's standard Types.Vertex/Types.Face shape; only position
--- (vx,vy,vz) is used for the simplification metric. Returns the new face
--- list - indices still point into the SAME `vertices` array you passed in
--- (meshoptimizer never creates new blended vertex positions or reorders/
--- dedupes the input array), plus the resulting relative error. Compact the
--- output yourself (drop unreferenced vertices) if you need a tight buffer -
--- see parsers/obj.luau's decimateMesh for an example.
 function Meshopt.simplify(
 	vertices: { meshTypes.Vertex },
 	faces: { meshTypes.Face },
@@ -125,7 +108,7 @@ function Meshopt.simplify(
 
 	local posPtr = upload(posBuf)
 	local idxPtr = upload(idxBuf)
-	local outIdxPtr = allocOut(indexCount * 4) -- worst case: same size as input (see meshopt_simplify's doc comment)
+	local outIdxPtr = allocOut(indexCount * 4) -- worst case: same size as input
 	local outErrorPtr = allocOut(4)
 
 	local newIndexCount = readI64(
