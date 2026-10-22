@@ -1,3 +1,4 @@
+local sift = require("@pkgs/Sift")
 local meshTypes = require("./types")
 local utils = {}
 utils.VERTEX_SIZE = 40
@@ -91,6 +92,11 @@ end
 utils.autoLOD = {
 	QEM = require("./autoLOD/QEM"),
 	MC = require("./autoLOD/MC"),
+	ZeuxMeshOptimizer = require("./autoLOD/ZeuxMeshOptimizer"),
 }
+
+utils.autoLOD = sift.Dictionary.map(utils.autoLOD, function(value, key, dictionary)
+	return value, key:lower()
+end)
 
 return utils

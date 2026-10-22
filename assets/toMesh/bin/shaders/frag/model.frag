@@ -1,6 +1,5 @@
 #version 450
 #include "../glsl/filters.glsl"
-#include "../glsl/datamosh.glsl"
 layout(set = 0, binding = 0) uniform sampler2D tex;
 layout(push_constant) uniform PCF { layout(offset = 96) uint mode; } pcf; // interpolation mode, see filters.glsl
 layout(location = 0) in vec4 vColor;

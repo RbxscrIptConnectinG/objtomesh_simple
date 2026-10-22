@@ -1,10 +1,16 @@
 local meshTypes = require("@applibs/mesh/types")
+local sift = require("@pkgs/Sift")
 
 return function(
 	root,
 	objData: string,
 	noInvertUV: boolean?,
-	autoLods: { method: string | "QEM" | "MC", levels: number, resolution: number }?
+	autoLods: {
+		method: string | "QEM" | "MC" | "ZeuxMeshOptimizer",
+		levels: number,
+		resolution: number,
+		[any]: any,
+	}?
 ): meshTypes.MeshData
 	local positions: { { number } } = {}
 	local normals: { { number } } = {}
@@ -101,21 +107,27 @@ return function(
 		end
 		table.insert(lodOffsets, #faces)
 		return { vertices = vertices, faces = faces, lodOffsets = lodOffsets }
-	elseif autoLods ~= nil and math.floor(autoLods.levels) > 0 then
+	elseif
+		autoLods ~= nil
+		and math.floor(autoLods.levels) > 0
+		and root.utils.autoLOD[string.lower(autoLods.method)] ~= nil
+	then
+		local methodName = string.lower(autoLods.method)
 		local levels = math.floor(autoLods.levels)
 		local baseFaceCount = #faces
 		local allVerts = vertices
 		local allFaces = faces
 		local lodOffsets: { number } = { 0, #allFaces }
 
-		print(`generating lods... [LEVELS: {levels}] [METHOD: {string.upper(autoLods.method)}]`)
+		print(`generating lods... [LEVELS: {levels}] [METHOD: {autoLods.method}]`)
 
 		for level = 1, levels do
 			print(`[LV{level}] generating...`)
 			local calc_div = autoLods.resolution ^ level
 
 			local targetCount = math.max(4, math.floor(baseFaceCount * calc_div))
-			local lodVerts, lodFaces = root.utils.autoLOD[string.upper(autoLods.method)](vertices, faces, targetCount)
+			local lodVerts, lodFaces =
+				root.utils.autoLOD[methodName](vertices, faces, targetCount, autoLods.methodOptions[methodName] or {})
 
 			local base = #allVerts
 			for _, v in lodVerts do
@@ -127,8 +139,13 @@ return function(
 			table.insert(lodOffsets, #allFaces)
 			print(`[LV{level}] generated!`)
 		end
-
 		return { vertices = allVerts, faces = allFaces, lodOffsets = lodOffsets }
+	elseif
+		autoLods ~= nil
+		and math.floor(autoLods.levels) > 0
+		and root.utils.autoLOD[string.lower(autoLods.method)] == nil
+	then
+		print(`autoLOD method "{autoLods.method}" doesn't seem to exist yet.`)
 	end
 
 	return { vertices = vertices, faces = faces }

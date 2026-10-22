@@ -5,10 +5,20 @@
         // but otherwise is unimportant
         "lodType": "None", // None | Unknown | RbxSimplifier | ZeuxMeshOptimizer
         "autoLODs": {
-            
-            "method": "QEM", // QEM | MC | ZeuxMeshOptimizer [sorry if i forgot to make ZeuxMeshOptimizer work.]
+            "method": "ZeuxMeshOptimizer", // QEM | MC | ZeuxMeshOptimizer
             "levels": 4, // honestly, what the fuck is wrong with roblox engine?, LODs from 5 to 9 doesn't even show up even when you try and force them to
-            "resolution": 0.85 // for model faces
+            "resolution": 0.8, // for model faces
+            // Calculation: resolution ^ cur_level
+            // NEVER EVER SET "resolution" TO SOMETHING LOWER THAN 0.5 IF YOU'RE USING LOW POLY MODEL
+            // USE EITHER 0.8 OR 0.7
+            "methodOptions": {
+                "ZeuxMeshOptimizer": {
+                    "targetError": 1,
+                    "lockBorder": true
+                },
+                "QEM": {},
+                "MC": {}
+            }
         }
     }
 }
