@@ -3,7 +3,7 @@
 	ReactVkuiProps - turns React props into vkui widget fields.
 
 	Elements are the vkui widget kinds, `React.createElement("Button", props, children)`:
-	Frame, Button, Image, ModelView, ScrollingFrame, Text, TextBox
+	any widget constructor of the ui module (Frame, Button, Image, ModelView, ViewportFrame, ScrollingFrame, Text, TextBox, ...)
 
 	* every prop is the same field you would pass to ui.Button({ ... }) etc. (size, position, color, onClick, ...)
 	* a string / number as the ONLY child becomes the `text` prop:   e("Text", nil, "Hello")
@@ -20,6 +20,10 @@ local None = require("@pkgs/LuauPolyfill").Object.None
 
 local exports = {}
 
+-- The widget constructors come from the renderer of the app (`app.renderer.UIFW` is the ui module, see ui.createApp), so this package
+-- does not require ui.luau and every element the ui module has works without being listed anywhere. Remembered by create().
+local framework: any = nil
+
 local instanceToBindings = setmetatable({}, { __mode = "k" })
 
 local function isBinding(v): boolean
@@ -32,6 +36,19 @@ end
 exports.isTextChild = isTextChild
 
 -- one untouched widget per kind, used to find the default value of a prop that was removed
+local pristine = {}
+local function defaultOf(kind: string, key: string)
+	local p = pristine[kind]
+	if p == nil then
+		p = framework[kind]({})
+		pristine[kind] = p
+	end
+	local v = rawget(p, key)
+	if type(v) == "table" then
+		return table.clone(v)
+	end
+	return v
+end
 
 local function describe(kind: string, key: any): string
 	return `<{kind}> prop "{tostring(key)}"`
@@ -47,6 +64,8 @@ local function setProp(widget, kind: string, key: string, value: any)
 		else
 			widget.text = value
 		end
+	elseif value == nil then
+		widget[key] = defaultOf(kind, key)
 	else
 		widget[key] = value
 	end
@@ -106,8 +125,19 @@ end
 
 -- creates the widget; bindings are returned so the host config can attach them once the widget is complete
 function exports.create(root, kind: string, props)
+	if root == nil then
+		error("ReactVkui: the renderer has no UIFW (the ui module) - create the app with ui.createApp", 0)
+	end
+	framework = root
+	local constructor = root[kind]
+	if type(constructor) ~= "function" then
+		error(
+			`ReactVkui: unknown element type "{tostring(kind)}" (it has to be a widget constructor of the ui module: Frame, Button, ViewportFrame, ...)`,
+			0
+		)
+	end
 	local clean, bindings = splitProps(kind, props)
-	local ok, widget = pcall(root[kind], clean)
+	local ok, widget = pcall(constructor, clean)
 	if not ok then
 		error(`ReactVkui: could not create <{kind}>: {tostring(widget)}`, 0)
 	end

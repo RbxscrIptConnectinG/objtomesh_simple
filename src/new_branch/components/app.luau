@@ -7,6 +7,7 @@ local reactVkui = require("@pkgs/ReactVkui")
 local e = react.createElement
 
 local theme = require("@toMesh/theme")
+local sift = require("@pkgs/Sift")
 local mesh = require("@applibs/mesh/")
 local cframe = require("@applibs/cframe")
 local scenelib = require("@libs/luau/UIFramework/UI/scene")
@@ -18,6 +19,35 @@ export type state = {}
 
 local padding = 16 / 2
 
+local default = {
+	texture = "./assets/toMesh/models/maw/c.png",
+	normalMap = "./assets/toMesh/models/maw/n.png",
+	roughnessMap = "./assets/toMesh/models/maw/r.png",
+	metalnessMap = "./assets/toMesh/models/maw/m.png",
+	--ambientOcclusionMap = "ao.png",
+	normalMapFormat = "OpenGL",
+	roughness = 1,
+	metalness = 1,
+	--ambientOcclusionStrength = 1,
+}
+
+local rot = 0
+
+local prv = zune.time.timestampMillis()
+
+local scene = scenelib.new()
+
+--[[zune.task.spawn(function()
+	while zune.process.pid() do
+		local dt = (zune.time.timestampMillis() - prv) * 60
+
+		rot = math.rad(math.deg(rot) + dt)
+		prv = zune.time.timestampMillis()
+		print(scene.objects)
+		zune.task.wait()
+	end
+end)]]
+
 return function(props: props, state: state)
 	local renderer = reactVkui.useRenderer()
 	local producer = reactReflex.useProducer()
@@ -26,43 +56,61 @@ return function(props: props, state: state)
 	end)
 	local scene = react.useMemo(function()
 		local model =
-			renderer:createModel(mesh.parsers.obj(mesh, fs.readFileSync("./assets/toMesh/models/baseCube.obj")))
+			renderer:createModel(mesh.parsers.obj(mesh, fs.readFileSync("./assets/toMesh/models/maw/maw.obj")))
 		local UIFW = renderer.UIFW
-		local scene = scenelib.new()
+
 		scene.camera.cframe = cframe.new(0, 0, 15)
-		scene:addModel(model, 1, cframe.new(7, 0, 0), {
-			shaders = {
-				["chromatic.glsl"] = {},
-			},
-		})
-		scene:addModel(model, 1, cframe.new(0, 0, 0), {
-			shaders = {
-				["chromatic.glsl"] = {
-					order = 2,
-					offset = 5,
+		local s = 0.1
+
+		scene:addModel(
+			model,
+			s,
+			cframe.new(7, 0, 0) * cframe.fromEulerAnglesYXZ(math.rad(90), rot, 0),
+			sift.Dictionary.joinDeep(default, {
+				shaders = {
+					["chromatic.glsl"] = {},
 				},
-				["datamosh.glsl"] = {
-					order = 1,
-					amount = 1,
-					threshold = 0.6,
-					refresh = 0.05,
-					blockSize = 2,
-					smear = 2,
+			})
+		)
+		scene:addModel(
+			model,
+			s,
+			cframe.new(0, 0, 0) * cframe.fromEulerAnglesYXZ(math.rad(90), rot, 0),
+			sift.Dictionary.joinDeep(default, {
+				shaders = {
+					["chromatic.glsl"] = {
+						order = 2,
+						offset = 5,
+					},
+					["datamosh.glsl"] = {
+						order = 1,
+						amount = 1,
+						threshold = 0.6,
+						refresh = 0.05,
+						blockSize = 2,
+						smear = 2,
+					},
 				},
-			},
-		})
-		scene:addModel(model, 1, cframe.new(-7, 0, 0), {
-			shaders = {
-				["datamosh.glsl"] = {
-					order = 1,
-					amount = 1,
-					threshold = 0.6,
-					refresh = 0.05,
-					blockSize = 2,
-					smear = 2,
+			})
+		)
+		scene:addModel(
+			model,
+			s,
+			cframe.new(-7, 0, 0) * cframe.fromEulerAnglesYXZ(math.rad(90), rot, 0),
+			sift.Dictionary.joinDeep(default, {
+				shaders = {
+					["datamosh.glsl"] = {
+						order = 1,
+						amount = 1,
+						threshold = 0.6,
+						refresh = 0.05,
+						blockSize = 2,
+						smear = 2,
+					},
 				},
-			},
-		})
+			})
+		)
+
 		return scene
 	end, { renderer })
 	if selected < 3 then

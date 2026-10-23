@@ -31,6 +31,10 @@ Object.assign(exports, Shared.ReactFiberHostConfig.WithNoPersistence)
 -- bindings found while creating an instance, attached in finalizeInitialChildren
 local pendingBindings = setmetatable({}, { __mode = "k" })
 
+local function kindOf(widget): string
+	return widget.kind
+end
+
 -- puts `child` into parent.children before `before` (or at the end); moves it when it already has a parent
 local function insertChild(parent, child, before)
 	local old = child.parent

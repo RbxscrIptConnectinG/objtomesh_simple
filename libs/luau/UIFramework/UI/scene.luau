@@ -27,6 +27,7 @@
 
 	Object fields: model, size (vector | number, multiplies the model's own units), cframe, color {r,g,b,a}, transparency (0..1, overrides color alpha),
 	texture, interpolation, doubleSided (default true), transparencyMethod ("blend" | "dither"), highlight (same table as ModelView.highlight),
+	normalMap, roughnessMap, metalnessMap, ambientOcclusionMap, roughness, metalness, ambientOcclusionStrength, normalMapFormat (same as ModelView),
 	shaders, visible (default true), centered (move the model's centre to the object's origin), name.
 	Camera: cframe (default: at (0, 0, 10) looking down -Z), fov (degrees, default 70), near (0.05), far (1000).
 	Light: direction (towards the light, default (0.35, 0.6, 0.72)), cameraFixed (default true: the direction is relative to the camera,
@@ -73,6 +74,14 @@ type ObjectData = {
 	doubleSided: boolean,
 	transparencyMethod: string?,
 	highlight: any?,
+	normalMap: any?,
+	roughnessMap: any?,
+	metalnessMap: any?,
+	ambientOcclusionMap: any?,
+	roughness: number?,
+	metalness: number?,
+	ambientOcclusionStrength: number?,
+	normalMapFormat: string?,
 	shaders: Effects?,
 	visible: boolean,
 	centered: boolean,
@@ -98,6 +107,14 @@ export type ObjectOptions = {
 	doubleSided: boolean?,
 	transparencyMethod: string?,
 	highlight: any?,
+	normalMap: any?,
+	roughnessMap: any?,
+	metalnessMap: any?,
+	ambientOcclusionMap: any?,
+	roughness: number?,
+	metalness: number?,
+	ambientOcclusionStrength: number?,
+	normalMapFormat: string?,
 	shaders: Effects?,
 	visible: boolean?,
 	centered: boolean?,
@@ -109,6 +126,7 @@ export type RenderHooks = {
 	interpolation: (value: any) -> number,
 	method: (value: any) -> string,
 	highlight: (value: any) -> any,
+	material: (object: any, camera: { number }) -> any, -- maps / values of one object -> material table of drawModel (nil = none)
 	defaultInterpolation: number,
 }
 
@@ -157,6 +175,14 @@ function WorldClass.addModel(
 		doubleSided = if o.doubleSided == nil then true else o.doubleSided,
 		transparencyMethod = o.transparencyMethod,
 		highlight = o.highlight,
+		normalMap = o.normalMap,
+		roughnessMap = o.roughnessMap,
+		metalnessMap = o.metalnessMap,
+		ambientOcclusionMap = o.ambientOcclusionMap,
+		roughness = o.roughness,
+		metalness = o.metalness,
+		ambientOcclusionStrength = o.ambientOcclusionStrength,
+		normalMapFormat = o.normalMapFormat,
 		shaders = o.shaders,
 		visible = if o.visible == nil then true else o.visible,
 		centered = o.centered == true,
@@ -268,6 +294,7 @@ type DrawItem = {
 	model: any,
 	mvp: { number },
 	light: { number },
+	camera: { number }, -- camera position in the object's space (for specular)
 	color: { number },
 	alpha: number,
 	depth: number, -- distance along the camera's look direction
@@ -336,6 +363,16 @@ function module.render(renderer: any, sc: any, x: number, y: number, w: number, 
 				m = matMul(m, translateMatrix(-model.center[1], -model.center[2], -model.center[3]))
 			end
 			local objLight = cf:VectorToObjectSpace(lightDir)
+			local size = readSize(obj.size)
+			local camLocal = cf:PointToObjectSpace(camPos)
+			camLocal = vector.create(
+				camLocal.x / (if size.x ~= 0 then size.x else 1),
+				camLocal.y / (if size.y ~= 0 then size.y else 1),
+				camLocal.z / (if size.z ~= 0 then size.z else 1)
+			)
+			if obj.centered and model.center then
+				camLocal += vector.create(model.center[1], model.center[2], model.center[3])
+			end
 			local color: { number } = obj.color or { 0.8, 0.8, 0.88, 1 }
 			local alpha = if obj.transparency ~= nil then 1 - math.clamp(obj.transparency, 0, 1) else (color[4] or 1)
 			local item: DrawItem = {
@@ -343,6 +380,7 @@ function module.render(renderer: any, sc: any, x: number, y: number, w: number, 
 				model = model,
 				mvp = matMul(viewProj, m),
 				light = { objLight.x, objLight.y, objLight.z },
+				camera = { camLocal.x, camLocal.y, camLocal.z },
 				color = { color[1], color[2], color[3], alpha },
 				alpha = alpha,
 				depth = vector.dot(cf.Position - camPos, camLook),
@@ -395,7 +433,8 @@ function module.render(renderer: any, sc: any, x: number, y: number, w: number, 
 			interp,
 			hooks.method(obj.transparencyMethod),
 			highlight,
-			clear
+			clear,
+			hooks.material(obj, item.camera)
 		)
 		drawn += 1
 	end

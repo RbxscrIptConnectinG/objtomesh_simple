@@ -89,6 +89,10 @@
 	ModelView:       highlight = { fillColor, fillTransparency, outlineColor, outlineTransparency, outlineThickness, depthMode } (real highlight: flat fill over the visible
 	                 surface + silhouette outline, no copied/inverted mesh; see README), modelTransparencyMethod ("blend" default | "dither" dot-pattern; applies to the model's imageTransparency / modelColor alpha; the ModelView `transparencyMethod` is its background), imageTransparency (0..1, fades the rendered model only; `transparency` fades the background only), model, texture, modelColor, yaw, pitch, zoom, fov, autoRotate (rad/s), zoomable,
 	                 doubleSided (default true; false culls back faces - faster, but triangles must wind counter-clockwise)
+	                 Material maps (textures or file paths, red channel): normalMap (tangent space), roughnessMap, metalnessMap, ambientOcclusionMap; values: roughness (multiplies the
+	                 map, or the roughness itself; default 1 with a map, 0.5 without), metalness (default 1 with a map, 0 without), ambientOcclusionStrength (0..1, default 1),
+	                 normalMapFormat = "OpenGL" (default, green up) | "DirectX" (green down). Any map or value switches the model to per-pixel lighting (one directional light,
+	                 GGX specular, no environment map); without them it is lit as before. Same fields on scene objects.
 	ViewportFrame:   scene = a world from scene.luau: scene.new() (world:addModel(model, size, cframe)) or a plain table { camera, light, objects } - see scene.luau.
 	                 Several models share one view and occlude each other; each object has its own color, texture, shaders, ... `color` is the background; viewShaders: effect shaders
 	                 over the whole scene render (background excluded); `shaders` works as on every widget.
@@ -1654,7 +1658,7 @@ do
 	end
 end
 
-local function modelMatrices(view: any): ({ number }?, { number }?)
+local function modelMatrices(view: any): ({ number }?, { number }?, { number }?)
 	local model = view.model
 	local aspect = math.max(view.aw / math.max(view.ah, 1), 0.01)
 	local half = math.atan(math.tan(view.fov / 2) * math.min(1, aspect))
@@ -1670,7 +1674,43 @@ local function modelMatrices(view: any): ({ number }?, { number }?)
 	for i = 0, 2 do
 		light[i + 1] = rot[i * 4 + 1] * LIGHT_VIEW[1] + rot[i * 4 + 2] * LIGHT_VIEW[2] + rot[i * 4 + 3] * LIGHT_VIEW[3]
 	end
-	return mvp, light
+	-- camera position in object space: center + radius * dist * R^T * (0, 0, 1)
+	local cam = {}
+	for i = 0, 2 do
+		cam[i + 1] = model.center[i + 1] + model.radius * dist * rot[i * 4 + 3]
+	end
+	return mvp, light, cam
+end
+
+-- normalMap / roughnessMap / metalnessMap / ambientOcclusionMap (+ roughness, metalness, ambientOcclusionStrength, normalMapFormat) -> the material table of
+-- renderer:drawModel, or nil when the model has none of them (it is then lit the old way)
+local function buildMaterial(w: any, camera: { number }?, owner: any?): any
+	local resolver = owner or w -- scene objects are plain tables: textures are resolved through the ViewportFrame
+	local normal, rough, metal, occ =
+		resolver:_resolveTex(w.normalMap),
+		resolver:_resolveTex(w.roughnessMap),
+		resolver:_resolveTex(w.metalnessMap),
+		resolver:_resolveTex(w.ambientOcclusionMap)
+	local force = w.roughness ~= nil or w.metalness ~= nil
+	if not (normal or rough or metal or occ or force) then
+		return nil
+	end
+	local format = normalizeName(w.normalMapFormat or "OpenGL")
+	if format ~= "opengl" and format ~= "directx" then
+		error(`ui: unknown normalMapFormat "{w.normalMapFormat}" (use "OpenGL" or "DirectX")`, 0)
+	end
+	return {
+		normal = normal,
+		roughness = rough,
+		metalness = metal,
+		occlusion = occ,
+		roughnessValue = w.roughness,
+		metalnessValue = w.metalness,
+		occlusionStrength = w.ambientOcclusionStrength,
+		invertGreen = format == "opengl",
+		force = force,
+		camera = camera,
+	}
 end
 
 --------------------------------------------------------------------------
@@ -1799,7 +1839,7 @@ function Widget:_drawBody(r: any, dt: number)
 		if not (gui and gui.dragModel == self) then
 			self.yaw += (self.autoRotate or 0) * dt
 		end
-		local mvp, light = modelMatrices(self)
+		local mvp, light, camera = modelMatrices(self)
 		local mc = self.modelColor
 		local viewEffects = if self.viewShaders ~= nil then r:effectsFor(self.viewShaders) else nil
 		if viewEffects and #viewEffects > 0 then
@@ -1825,7 +1865,9 @@ function Widget:_drawBody(r: any, dt: number)
 			self.doubleSided,
 			self:_interp(),
 			methodName(self.modelTransparencyMethod, "modelTransparencyMethod"),
-			normalizeHighlight(self.highlight)
+			normalizeHighlight(self.highlight),
+			nil,
+			buildMaterial(self, camera)
 		)
 		if viewEffects then
 			r:endLayer()
@@ -1853,6 +1895,9 @@ function Widget:_drawBody(r: any, dt: number)
 				return methodName(value, "transparencyMethod")
 			end,
 			highlight = normalizeHighlight,
+			material = function(object, camera)
+				return buildMaterial(object, camera, self)
+			end,
 			defaultInterpolation = self:_interp(),
 		})
 		if viewEffects then
@@ -2459,28 +2504,34 @@ function ui.createApp(opts: AppOptions?): any
 		glfw.terminate()
 		error(renderer, 0)
 	end
-	local fake = setmetatable({}, {
-		__index = function(tbl, key)
+	-- The app hands out a thin proxy of the renderer: everything is forwarded to the real renderer (reads and writes), and
+	-- `UIFW` is this ui module, so code that only has the renderer (React components, helpers in other modules) can create widgets
+	-- without requiring ui.luau itself: renderer.UIFW.Frame({ ... }), and ReactVkui looks element kinds up there.
+	local proxy: any = setmetatable({}, {
+		__index = function(_, key)
 			if key == "UIFW" then
 				return ui
 			end
 			return renderer[key]
 		end,
+		__newindex = function(_, key, value)
+			renderer[key] = value
+		end,
 	})
-	local gui = ui.new(window, fake)
+	local gui = ui.new(window, proxy)
 	if o.ZIndexBehavior then
 		gui.root.ZIndexBehavior = o.ZIndexBehavior
 	end
 	if o.font then
 		local okFont, fontErr = pcall(gui.setDefaultFont, gui, o.font)
 		if not okFont then
-			fake:destroy()
+			proxy:destroy()
 			window:destroy()
 			glfw.terminate()
 			error(fontErr, 0)
 		end
 	end
-	return setmetatable({ glfw = glfw, window = window, renderer = fake, gui = gui, root = gui.root }, App)
+	return setmetatable({ glfw = glfw, window = window, renderer = proxy, gui = gui, root = gui.root }, App)
 end
 
 -- step(dt) runs once per frame before the UI is laid out; use it to mutate widgets.

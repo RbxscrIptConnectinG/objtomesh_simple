@@ -22,7 +22,7 @@ local ffi = zune.ffi
 local vk = require("@self/vk")
 local shaderLoader = require("@self/shader")
 local fxLoader = require("@self/fx")
-local imagelib = require("./image")
+local imageLib = require("./image")
 local C = vk.C
 
 local FRAMES = 2
@@ -367,7 +367,9 @@ function Renderer.new(glfw: any, window: any, options: Options?): any
 	self.vp = ffi.alloc(24, 8)
 	self.rect = ffi.alloc(16, 8)
 	self.pcUI = ffi.alloc(8, 8)
-	self.modeBuf = buffer.create(4) -- fragment push constant: interpolation mode
+	self.modeBuf = buffer.create(4) -- fragment push constant of the UI pipelines: interpolation mode
+	self.fragPC = buffer.create(32) -- fragment push constant of the model pipelines (material.glsl)
+	self.setArr5 = ffi.alloc(40, 8)
 	self.hlScratch = buffer.create(96) -- push-constant copy used by the highlight passes
 
 	-- sampler, descriptor layout/pool
@@ -1079,13 +1081,14 @@ function Renderer:_createPipelines(overrides: any)
 	self.modelLayout = self:_create(
 		"vkCreatePipelineLayout",
 		vk.new("VkPipelineLayoutCreateInfo", {
+			-- sets: 0 base colour, 1 normal map, 2 roughness map, 3 metalness map, 4 ambient occlusion map (the white texture when there is none)
 			sType = C.ST_PIPELINE_LAYOUT_CREATE_INFO,
-			setLayoutCount = 1,
-			pSetLayouts = vk.ptrArray({ self.dsl }, a),
-			pushConstantRangeCount = 2, -- vertex: MVP + light + colour (96 bytes); fragment: interpolation mode (4 bytes)
+			setLayoutCount = 5,
+			pSetLayouts = vk.ptrArray({ self.dsl, self.dsl, self.dsl, self.dsl, self.dsl }, a),
+			pushConstantRangeCount = 2, -- vertex: MVP + light + colour (96 bytes); fragment: mode, flags, camera, roughness, metalness, occlusion (32 bytes, see material.glsl)
 			pPushConstantRanges = vk.newArray("VkPushConstantRange", {
 				{ stageFlags = C.SHADER_VERTEX, offset = 0, size = 96 },
-				{ stageFlags = C.SHADER_FRAGMENT, offset = 96, size = 4 },
+				{ stageFlags = C.SHADER_FRAGMENT, offset = 96, size = 32 },
 			}, a),
 		}, a)
 	)
@@ -1316,7 +1319,8 @@ end
 -- data: PNG or SVG file contents (string or buffer). PNG needs zune.serde.zlib.
 -- options (SVG only): { width =, height =, scale =, color =, background =, preserveAspectRatio =, bleed = }, see svg.luau
 function Renderer:loadImage(data: string | buffer, options: { [string]: any }?): any
-	local w, h, rgba = imagelib.decode(data, options)
+	local image = require("./image")
+	local w, h, rgba = image.decode(data, options)
 	return self:createTexture(w, h, rgba)
 end
 
@@ -1326,8 +1330,7 @@ end
 
 -- Rasterizes SVG markup into a texture of width x height pixels (omit one for the aspect ratio, both for the intrinsic size).
 function Renderer:loadSvg(markup: string | buffer, width: number?, height: number?, options: { [string]: any }?): any
-	local svg = imagelib.libs.svg
-	local w, h, rgba = svg.rasterize(markup, width, height, options)
+	local w, h, rgba = imageLib.libs.svg.rasterize(markup, width, height, options)
 	return self:createTexture(w, h, rgba)
 end
 
@@ -1587,6 +1590,9 @@ end
 	method: "blend" (default, alpha blending) | "dither" (4x4 dot pattern, alpha picks how many dots; alpha-only texture cutouts included)
 	interp: texture interpolation id: 0 Linear (default), 1 Nearest Neighbor, 2 Cubic (Catmull-Rom), 3 Cubic B-spline, 4 Mitchell, 5 Lanczos-3
 	doubleSided: false = back faces are culled (counter-clockwise triangles are front faces), anything else = drawn
+	material: nil | { normal, roughness, metalness, occlusion = Texture?, roughnessValue = number?, metalnessValue = number?, occlusionStrength = number?,
+	         invertGreen = boolean?, force = boolean? (light with the material shader even without maps: roughness / metalness values), camera = {x, y, z} (camera position in object space; needed for the specular highlight) }
+	         - maps are textures (red channel; the normal map is tangent space, see shaders/material.glsl). Without any map the model is lit as before.
 	clear: what is reset inside the view rect before the model is drawn: "all" (default: depth + stencil) | "none" (keep the depth of the models drawn before, so several models
 	       in one view occlude each other: ViewportFrame) | "stencil" (keep depth, fresh stencil: a later model with a highlight)
 ]]
@@ -1604,7 +1610,8 @@ function Renderer:drawModel(
 	interp: number?,
 	method: string?,
 	highlight: any?,
-	clear: string?
+	clear: string?,
+	material: any?
 )
 	local pc = buffer.create(96)
 	for i = 1, 16 do
@@ -1628,6 +1635,7 @@ function Renderer:drawModel(
 		dither = (method == "dither"),
 		hl = highlight,
 		clear = clear,
+		material = material,
 	})
 	self.cur = nil
 end
@@ -2015,10 +2023,52 @@ function Renderer:_replay(cb: any, list: { any })
 						L.vkCmdClearAttachments(cb, 1, self.clearAttStencil, 1, self.clearRect)
 					end
 					L.vkCmdPushConstants(cb, self.modelLayout, C.SHADER_VERTEX, 0, 96, cmd.pc)
-					self.setArr:writeptr(0, if cmd.interp == 1 then cmd.tex:nearestSet() else cmd.tex.set)
-					buffer.writeu32(self.modeBuf, 0, cmd.interp)
-					L.vkCmdPushConstants(cb, self.modelLayout, C.SHADER_FRAGMENT, 96, 4, self.modeBuf)
-					L.vkCmdBindDescriptorSets(cb, 0, self.modelLayout, 0, 1, self.setArr, 0, nil)
+					local mat = cmd.material
+					local white = self.white.set
+					local flags = 0
+					local sets = self.setArr5
+					sets:writeptr(0, if cmd.interp == 1 then cmd.tex:nearestSet() else cmd.tex.set)
+					sets:writeptr(8, white)
+					sets:writeptr(16, white)
+					sets:writeptr(24, white)
+					sets:writeptr(32, white)
+					local fp = self.fragPC
+					buffer.fill(fp, 0, 0)
+					buffer.writeu32(fp, 0, cmd.interp)
+					if mat then
+						if mat.normal then
+							flags += 1
+							sets:writeptr(8, mat.normal.set)
+							if mat.invertGreen then
+								flags += 16
+							end
+						end
+						if mat.roughness then
+							flags += 2
+							sets:writeptr(16, mat.roughness.set)
+						end
+						if mat.metalness then
+							flags += 4
+							sets:writeptr(24, mat.metalness.set)
+						end
+						if mat.occlusion then
+							flags += 8
+							sets:writeptr(32, mat.occlusion.set)
+						end
+						if mat.force then
+							flags += 32
+						end
+						local cam = mat.camera or { 0, 0, 0 }
+						buffer.writeu32(fp, 4, flags)
+						buffer.writef32(fp, 8, cam[1])
+						buffer.writef32(fp, 12, cam[2])
+						buffer.writef32(fp, 16, cam[3])
+						buffer.writef32(fp, 20, mat.roughnessValue or (if mat.roughness then 1 else 0.5))
+						buffer.writef32(fp, 24, mat.metalnessValue or (if mat.metalness then 1 else 0))
+						buffer.writef32(fp, 28, mat.occlusionStrength or 1)
+					end
+					L.vkCmdPushConstants(cb, self.modelLayout, C.SHADER_FRAGMENT, 96, 32, fp)
+					L.vkCmdBindDescriptorSets(cb, 0, self.modelLayout, 0, 5, sets, 0, nil)
 					self.bufArr:writeptr(0, cmd.model.buf.buffer)
 					self.offArr:writeu64(0, 0)
 					L.vkCmdBindVertexBuffers(cb, 0, 1, self.bufArr, self.offArr)

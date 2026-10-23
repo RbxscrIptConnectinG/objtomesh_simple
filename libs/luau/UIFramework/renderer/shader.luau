@@ -132,6 +132,7 @@ local function expand(path: string, deps: { string }, depth: number): string
 		error(`shader: #include nesting too deep at {path}`, 0)
 	end
 	table.insert(deps, path)
+	print(path)
 	local source = zune.fs.readFileSync(path) :: string
 	local dir = zune.fs.path.dirname(path) or "."
 	local out: { string } = {}
